@@ -1,23 +1,16 @@
-"""
-Loan Optimizer – ID holidays / selectable banks
-"""
-
 from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
-import holidays
 from typing import List
+import holidays
 
-# ---- ดอกเบี้ยปัจจุบัน (แก้ใน UI ได้) ----
-DEFAULT_RATES = {
+# ----- ดอกเบี้ย -----
+R = {
     "SCBT_1W": 6.20,
     "SCBT_2W": 6.60,
-    "SCBT_CROSS": 9.20,   # ถ้าหลุดข้ามเดือน
-    "CIMB_1M": 7.00,
     "CITI_CALL": 7.75,
-    "CITI_3M": 8.69,
 }
-# -------------------------------------------
+# ---------------------
 
 ID_HOL = holidays.country_holidays("ID")
 
@@ -32,12 +25,12 @@ def next_bday(d: date) -> date:
     return d
 
 
-def calc_interest(p: float, r: float, d: int) -> float:
+def calc_i(p: float, r: float, d: int) -> float:
     return p * r / 100 * d / 365
 
 
 @dataclass
-class Segment:
+class Seg:
     bank: str
     rate: float
     start: date
@@ -46,71 +39,52 @@ class Segment:
     def days(self) -> int:
         return (self.end - self.start).days + 1
 
-    def interest(self, principal: float) -> float:
-        return calc_interest(principal, self.rate, self.days())
+    def interest(self, p: float) -> float:
+        return calc_i(p, self.rate, self.days())
 
 
-# ----------- Strategy Builder ------------
-def plan_scbt_only(start: date, total_days: int, p: float, rates: dict) -> List[Segment]:
-    """ใช้ SCBT ต่อเนื่อง แม้โดน Cross-Month Penalty"""
-    segs: List[Segment] = []
-    cur = next_bday(start)
-    remain = total_days
+# ---------- NEW: auto-cycle SCBT ↔ CITI ----------
+def plan_scbt_citi_cycle(start: date, total_days: int) -> List[Seg]:
+    segs: List[Seg] = []
+    cur, left = next_bday(start), total_days
 
-    while remain > 0:
-        if remain >= 14:
-            seg_len, rate = 14, rates["SCBT_2W"]
-        elif remain >= 7:
-            seg_len, rate = 7, rates["SCBT_1W"]
-        else:
-            seg_len, rate = remain, rates["SCBT_1W"]
+    while left > 0:
+        # (1) พยายามใส่ 14d / 7d SCBT ให้ “ไม่ข้ามเดือน”
+        placed = False
+        for seg_len, rate in ((14, R["SCBT_2W"]), (7, R["SCBT_1W"])):
+            last = cur + timedelta(days=seg_len - 1)
+            if seg_len <= left and last.month == cur.month:
+                end = next_bday(last)
+                segs.append(Seg("SCBT", rate, cur, end))
+                cur = next_bday(end + timedelta(days=1))
+                left -= seg_len
+                placed = True
+                break
 
-        end = next_bday(cur + timedelta(days=seg_len - 1))
-        seg = Segment("SCBT", rate, cur, end)
-        # ปรับเรทถ้า cross-month
-        if seg.start.month != seg.end.month:
-            seg.rate = rates["SCBT_CROSS"]
-        segs.append(seg)
+        if placed:
+            continue  # วน loop เติม SCBT ต่อ
 
+        # (2) ถ้าใส่ SCBT เพิ่มแล้วจะข้ามเดือน ⇒ ใช้ CITI Call bridge
+        month_end = date(cur.year, cur.month, 28)
+        # หา last business day ของเดือนนี้
+        while month_end.month == cur.month:
+            month_end += timedelta(days=1)
+        month_end -= timedelta(days=1)
+        while is_holiday(month_end):
+            month_end -= timedelta(days=1)
+
+        # ช่วง CITI เริ่มวันนี้ ถึงวันทำการแรกของเดือนถัดไป-1
+        end = month_end
+        days_citi = (end - cur).days + 1
+        if days_citi > left:
+            end = cur + timedelta(days=left - 1)
+            days_citi = left
+        segs.append(Seg("CITI", R["CITI_CALL"], cur, end))
         cur = next_bday(end + timedelta(days=1))
-        remain -= seg_len
-    return segs
-
-
-def plan_scbt_to_bank(start: date, total_days: int, p: float,
-                      rates: dict, dst_bank: str) -> List[Segment]:
-    """
-    ภายในเดือนใช้ SCBT 1W / 2W
-    ข้ามเดือนโยกไป  dst_bank (CIMB หรือ CITI_CALL)
-    """
-    segs: List[Segment] = []
-    cur = next_bday(start)
-    remain = total_days
-
-    # --- SCBT ภายในเดือนแรก ---
-    while remain > 0 and cur.month == start.month:
-        if remain >= 14 and (cur + timedelta(days=13)).month == cur.month:
-            seg_len, rate = 14, rates["SCBT_2W"]
-        elif remain >= 7 and (cur + timedelta(days=6)).month == cur.month:
-            seg_len, rate = 7, rates["SCBT_1W"]
-        else:
-            break
-        end = next_bday(cur + timedelta(days=seg_len - 1))
-        segs.append(Segment("SCBT", rate, cur, end))
-        cur = next_bday(end + timedelta(days=1))
-        remain -= seg_len
-
-    # --- bank ปลายทาง สำหรับส่วนที่เหลือ ---
-    if remain > 0:
-        end = next_bday(cur + timedelta(days=remain - 1))
-        if dst_bank == "CIMB":
-            rate = rates["CIMB_1M"]
-        else:                        # CITI_CALL
-            rate = rates["CITI_CALL"]
-        segs.append(Segment(dst_bank, rate, cur, end))
+        left -= days_citi
 
     return segs
 
 
-def total_interest(segs: List[Segment], p: float) -> float:
+def total_interest(segs: List[Seg], p: float) -> float:
     return sum(s.interest(p) for s in segs)
