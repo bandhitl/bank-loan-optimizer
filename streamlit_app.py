@@ -4,64 +4,70 @@ from datetime import date
 from main import (plan_scbt_only, plan_scbt_to_bank,
                   total_interest, DEFAULT_RATES)
 
-st.set_page_config(page_title="Loan Optimizer", page_icon="💸")
-st.title("💸 Loan Optimizer (Indonesia Holiday)")
+st.set_page_config(page_title="Loan Optimizer (ID)", page_icon="💸")
+st.title("💸 Loan Optimizer – SCBT / CIMB / CITI")
 
-# -------- Sidebar Inputs --------
+# ---------- Sidebar ----------
 with st.sidebar:
     st.header("Parameters")
-    P = st.number_input("Principal (IDR)", 38_000_000_000, step=1_000_000_000)
-    D = st.number_input("Total days", 30, min_value=1, step=1)
-    start = st.date_input("Start date", value=date.today())
+    principal = st.number_input(label="Principal (IDR)",
+                                value=38_000_000_000,
+                                step=1_000_000_000)
+    days      = st.number_input(label="Total days",
+                                value=30,
+                                min_value=1,
+                                step=1)      # ← 🔴 ใช้ keyword-args ทั้งหมด
+    start     = st.date_input(label="Start date", value=date.today())
 
     st.markdown("### Active Banks")
-    active_banks = st.multiselect(
-        "เลือก bank ที่เปิดใช้งาน",
+    active = st.multiselect(
+        "เลือก bank ที่เปิดใช้",
         options=["SCBT", "CIMB", "CITI"],
-        default=["SCBT", "CIMB", "CITI"]
+        default=["SCBT", "CIMB", "CITI"],
     )
-    if st.button("Run"):
-        st.session_state["run"] = True
+    run = st.button("Run", use_container_width=True)
+# --------------------------------
 
-# -------- Run Calculation --------
-if st.session_state.get("run"):
-    strategies = {}
+if run:
+    strat = {}
 
-    # Alwaysมี SCBT-only baseline
-    segs_scbt = plan_scbt_only(start, D, P, DEFAULT_RATES)
-    strategies["SCBT only"] = segs_scbt
+    # 1) SCBT only
+    segs = plan_scbt_only(start, days, principal, DEFAULT_RATES)
+    strat["SCBT only"] = segs
 
-    # SCBT → CIMB
-    if "CIMB" in active_banks:
-        segs_cimb = plan_scbt_to_bank(start, D, P, DEFAULT_RATES, dst_bank="CIMB")
-        strategies["SCBT → CIMB"] = segs_cimb
+    # 2) SCBT → CIMB
+    if "CIMB" in active:
+        strat["SCBT → CIMB"] = plan_scbt_to_bank(
+            start, days, principal, DEFAULT_RATES, "CIMB"
+        )
 
-    # SCBT → CITI Call
-    if "CITI" in active_banks:
-        segs_citi = plan_scbt_to_bank(start, D, P, DEFAULT_RATES, dst_bank="CITI")
-        strategies["SCBT → CITI_CALL"] = segs_citi
+    # 3) SCBT → CITI Call
+    if "CITI" in active:
+        strat["SCBT → CITI_CALL"] = plan_scbt_to_bank(
+            start, days, principal, DEFAULT_RATES, "CITI"
+        )
 
-    # ---- Show summary table ----
+    # -------- Summary table --------
     summary = {
         "Strategy": [],
         "Total Interest (IDR)": [],
     }
-    for name, segs in strategies.items():
+    for name, segs in strat.items():
         summary["Strategy"].append(name)
-        summary["Total Interest (IDR)"].append(f"{total_interest(segs, P):,.0f}")
+        summary["Total Interest (IDR)"].append(f"{total_interest(segs, principal):,.0f}")
 
-    st.subheader("💰 Comparison")
-    st.dataframe(pd.DataFrame(summary))
+    st.subheader("💰 Interest Comparison")
+    st.dataframe(pd.DataFrame(summary), use_container_width=True)
 
-    # ---- Expand each plan details ----
-    for name, segs in strategies.items():
+    # -------- Detail per plan --------
+    for name, segs in strat.items():
         with st.expander(f"Details – {name}", expanded=False):
             df = pd.DataFrame({
-                "Bank": [s.bank for s in segs],
-                "Rate %": [s.rate for s in segs],
-                "Start": [s.start for s in segs],
-                "End": [s.end for s in segs],
-                "Days": [s.days() for s in segs],
-                "Interest (IDR)": [f"{s.interest(P):,.0f}" for s in segs],
+                "Bank":   [s.bank  for s in segs],
+                "Rate %": [s.rate  for s in segs],
+                "Start":  [s.start for s in segs],
+                "End":    [s.end   for s in segs],
+                "Days":   [s.days() for s in segs],
+                "Interest (IDR)": [f"{s.interest(principal):,.0f}" for s in segs],
             })
-            st.dataframe(df)
+            st.dataframe(df, use_container_width=True)
