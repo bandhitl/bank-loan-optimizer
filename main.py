@@ -4,13 +4,15 @@ from datetime import date, timedelta
 from typing import List
 import holidays
 
-# ----- ดอกเบี้ย -----
-R = {
+# --- ดอกเบี้ยเริ่มต้น (ปรับใน UI ได้ในอนาคต) ---
+RATES = {
     "SCBT_1W": 6.20,
     "SCBT_2W": 6.60,
+    "SCBT_CROSS": 9.20,
+    "CIMB_1M": 7.00,
     "CITI_CALL": 7.75,
 }
-# ---------------------
+# ---------------------------------------------------
 
 ID_HOL = holidays.country_holidays("ID")
 
@@ -20,6 +22,7 @@ def is_holiday(d: date) -> bool:
 
 
 def next_bday(d: date) -> date:
+    """คืนวันทำการถัดไปจาก d (ถ้า d เป็นวันทำการอยู่แล้วจะคืน d เดิม)"""
     while is_holiday(d):
         d += timedelta(days=1)
     return d
@@ -43,45 +46,65 @@ class Seg:
         return calc_i(p, self.rate, self.days())
 
 
-# ---------- NEW: auto-cycle SCBT ↔ CITI ----------
-def plan_scbt_citi_cycle(start: date, total_days: int) -> List[Seg]:
-    segs: List[Seg] = []
-    cur, left = next_bday(start), total_days
+# ---------- Helper ----------
+def add_seg(segs: List[Seg], bank: str, rate: float,
+            start: date, length: int) -> date:
+    """เพิ่ม segment ยาว length วันต่อเนื่อง (รวมวันหยุด) แล้วคืนวันถัดไป"""
+    end = start + timedelta(days=length - 1)
+    segs.append(Seg(bank, rate, start, end))
+    return end + timedelta(days=1)        # วันถัดไป (อาจเป็นวันหยุด)
 
-    while left > 0:
-        # (1) พยายามใส่ 14d / 7d SCBT ให้ “ไม่ข้ามเดือน”
+
+# ---------- Core Planner ----------
+def build_plan(start: date,
+               total_days: int,
+               active_banks: list[str]) -> List[Seg]:
+    """
+    • วน SCBT 1W / 2W ภายในเดือน
+    • ถ้าข้ามเดือนให้ Bridge ไปยัง Bank ที่เปิดใช้ลำดับแรก (CITI → CIMB)
+        – Bridge ช่วงวันหยุด/วันข้ามทั้งหมด (ดึงอัตราวันหยุดด้วย)
+    • กลับเข้า SCBT ทันทีเมื่อพ้นวันทำการแรกของเดือนใหม่
+    """
+    segs: List[Seg] = []
+    cur = start
+    remain = total_days
+
+    # เรียง priority ของ bank ปลายทาง
+    dst_sequence = [b for b in ["CITI", "CIMB"] if b in active_banks]
+
+    while remain > 0:
+        # ---------- SCBT ภายในเดือน ----------
         placed = False
-        for seg_len, rate in ((14, R["SCBT_2W"]), (7, R["SCBT_1W"])):
+        for seg_len, rate in ((14, RATES["SCBT_2W"]), (7, RATES["SCBT_1W"])):
             last = cur + timedelta(days=seg_len - 1)
-            if seg_len <= left and last.month == cur.month:
-                end = next_bday(last)
-                segs.append(Seg("SCBT", rate, cur, end))
-                cur = next_bday(end + timedelta(days=1))
-                left -= seg_len
+            if seg_len <= remain and last.month == cur.month:
+                cur = add_seg(segs, "SCBT", rate, cur, seg_len)
+                remain -= seg_len
                 placed = True
                 break
-
         if placed:
-            continue  # วน loop เติม SCBT ต่อ
+            continue  # กลับขึ้นต้น loop
 
-        # (2) ถ้าใส่ SCBT เพิ่มแล้วจะข้ามเดือน ⇒ ใช้ CITI Call bridge
-        month_end = date(cur.year, cur.month, 28)
-        # หา last business day ของเดือนนี้
-        while month_end.month == cur.month:
-            month_end += timedelta(days=1)
-        month_end -= timedelta(days=1)
-        while is_holiday(month_end):
-            month_end -= timedelta(days=1)
+        # ---------- Bridge ข้ามเดือน ----------
+        if not dst_sequence:
+            # ถ้าไม่มี bank ปลายทาง -> โดน penalty SCBT_CROSS
+            seg_len = remain
+            cur = add_seg(segs, "SCBT", RATES["SCBT_CROSS"], cur, seg_len)
+            break
 
-        # ช่วง CITI เริ่มวันนี้ ถึงวันทำการแรกของเดือนถัดไป-1
-        end = month_end
-        days_citi = (end - cur).days + 1
-        if days_citi > left:
-            end = cur + timedelta(days=left - 1)
-            days_citi = left
-        segs.append(Seg("CITI", R["CITI_CALL"], cur, end))
-        cur = next_bday(end + timedelta(days=1))
-        left -= days_citi
+        bridge_bank = dst_sequence[0]
+        bridge_rate = RATES["CITI_CALL"] if bridge_bank == "CITI" else RATES["CIMB_1M"]
+
+        # วันสุดท้ายของเดือนปัจจุบัน
+        month_end = date(cur.year, cur.month + 1, 1) - timedelta(days=1)
+        seg_len = (month_end - cur).days + 1
+        seg_len = min(seg_len, remain)
+
+        cur = add_seg(segs, bridge_bank, bridge_rate, cur, seg_len)
+        remain -= seg_len
+
+        # กระโดดไปวันทำการแรกของเดือนใหม่
+        cur = next_bday(cur)
 
     return segs
 
