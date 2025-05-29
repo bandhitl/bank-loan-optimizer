@@ -4,27 +4,21 @@ from datetime import date, timedelta
 from typing import List
 import holidays
 
-# ── default rates (แก้ใน UI ได้) ────────────────────────────
+# ── ค่าเรทเริ่มต้น ─────────────────────────────────────────
 RATES = dict(
     SCBT_1W=6.20,
     SCBT_2W=6.60,
-    SCBT_CROSS=9.20,      # ถ้าฝืนใช้ SCBT ข้ามเดือน
+    SCBT_CROSS=9.20,
     CIMB_1M=7.00,
     CITI_CALL=7.75,
 )
-# ─────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────
 
-ID_HOL = holidays.country_holidays("ID")        # วันหยุดอินโดฯ
+ID_HOL = holidays.country_holidays("ID")     # วันหยุดอินโดฯ
 
 
 def is_holiday(d: date) -> bool:
     return d.weekday() >= 5 or d in ID_HOL
-
-
-def next_bday(d: date) -> date:
-    while is_holiday(d):
-        d += timedelta(days=1)
-    return d
 
 
 def calc_i(p: float, r: float, days: int) -> float:
@@ -45,57 +39,56 @@ class Segment:
         return calc_i(p, self.rate, self.days())
 
 
-# ── planner ─────────────────────────────────────────────────
+# ── planner ────────────────────────────────────────────────
 def build_plan(
     start: date,
     total_days: int,
-    bridge_priority: list[str],    # ตัวอย่าง ["CITI", "CIMB"]
+    bridge_priority: list[str],       # ex. ["CITI", "CIMB"]
     rates: dict[str, float] = RATES,
 ) -> List[Segment]:
     """
-    • ใช้ SCBT 1W / 2W ต่อเนื่องจนสิ้นเดือน (รวมวันหยุด)
-    • ถ้าเหลือวันข้ามเดือน  → ใช้ bank แรกใน bridge_priority เป็น Call bridge
-    • หลังวันทำการแรกของเดือนใหม่ กลับเข้า SCBT วนต่อ
-    • ถ้า bridge_priority ว่าง  ⇒ ใช้ SCBT_CROSS ยาวจนจบ
+    • SCBT 1W/2W → สิ้นเดือน (รวมวันหยุด)
+    • ถ้าข้ามเดือน  → Bank แรกใน bridge_priority (Call bridge) ครอบวันสิ้นเดือน+วันหยุด
+    • วันทำการแรกของเดือนใหม่ → กลับเข้า SCBT ต่อตามปกติ
+    • ถ้าไม่เปิด bridge เลย → ใช้ SCBT_CROSS ยาวจนจบ
     """
     segs: List[Segment] = []
-    cur = next_bday(start)                    # เริ่มวันทำการ
+    cur = start
     left = total_days
 
-    def push(bank: str, rate: float, length: int):
+    def push(bank: str, rate_key: str, length: int):
         nonlocal cur, left
-        end = cur + timedelta(days=length - 1)
-        segs.append(Segment(bank, rate, cur, end))
-        cur = next_bday(end + timedelta(days=1))
+        segs.append(
+            Segment(bank, rates[rate_key], cur, cur + timedelta(days=length - 1))
+        )
+        cur += timedelta(days=length)
         left -= length
 
     while left > 0:
-        # -------- เติม SCBT ภายในเดือน ----------
+        # --------- SCBT ภายในเดือน ----------
         placed = False
         for seg_len, rate_key in ((14, "SCBT_2W"), (7, "SCBT_1W")):
-            last = cur + timedelta(days=seg_len - 1)
-            if seg_len <= left and last.month == cur.month:
-                push("SCBT", rates[rate_key], seg_len)
+            end = cur + timedelta(days=seg_len - 1)
+            if seg_len <= left and end.month == cur.month:
+                push("SCBT", rate_key, seg_len)
                 placed = True
                 break
         if placed:
             continue
 
-        # -------- ต้องข้ามเดือน → Bridge ----------
+        # --------- ต้องข้ามเดือน ----------
         if not bridge_priority:
-            push("SCBT", rates["SCBT_CROSS"], left)
+            push("SCBT", "SCBT_CROSS", left)
             break
 
-        bridge_bank = bridge_priority[0]
-        bridge_rate = rates["CITI_CALL"] if bridge_bank == "CITI" else rates["CIMB_1M"]
+        bank = bridge_priority[0]
+        rate_key = "CITI_CALL" if bank == "CITI" else "CIMB_1M"
 
-        # ความยาวจนถึงวันทำการสุดท้ายของเดือน
-        month_end = date(cur.year, cur.month + 1, 1) - timedelta(days=1)
-        while is_holiday(month_end):
-            month_end -= timedelta(days=1)
-        bridge_len = (month_end - cur).days + 1
+        # สร้างสะพานตั้งแต่วันนี้ถึงสิ้นเดือน
+        next_month_1st = date(cur.year, cur.month + 1, 1)
+        bridge_len = (next_month_1st - cur).days
         bridge_len = min(bridge_len, left)
-        push(bridge_bank, bridge_rate, bridge_len)
+        push(bank, rate_key, bridge_len)
 
     return segs
 
