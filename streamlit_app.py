@@ -1,20 +1,4 @@
-        ## Welcome to the Bank Loan Optimization Calculator! 👋
-        
-        This tool helps you find the optimal loan strategy by:
-        - 🔄 Comparing different bank offerings
-        - 📊 Analyzing cross-month penalties
-        - 🏦 Supporting multi-bank strategies
-        - 📈 Maximizing your savings
-        - 📅 **Realistic continuous loan calculation**
-        
-        **How to use:**
-        1. Set your loan parameters in the sidebar
-        2. Configure bank interest rates
-        3. Click "Calculate Optimal Strategy"
-        4. Review the results and timeline
-        
-        **Features:**
-        - Smart cross-month handlingimport streamlit as st
+import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
@@ -329,13 +313,8 @@ def main():
                 if any(s.crosses_month for s in best_strategy.segments):
                     st.info("🔴 = Segment crosses month-end (higher rate applied)")
                 
-                # Add weekend/holiday info
-                weekend_segments = [s for s in best_strategy.segments if any(
-                    calculator.is_weekend_or_holiday(s.start_date + timedelta(days=i)) 
-                    for i in range(s.days)
-                )]
-                if weekend_segments:
-                    st.info("📅 System automatically adjusted segments to avoid weekend/holiday endings")
+                # Add continuous loan info
+                st.info("📅 All dates are included continuously - no days are skipped, including weekends and holidays")
             
             with tab3:
                 st.subheader("Strategy Comparison")
@@ -400,7 +379,6 @@ def main():
             st.error("❌ Unable to calculate optimal strategy. Please check your inputs.")
     
     else:
-                
         # Welcome message
         st.markdown("""
         ## Welcome to the Bank Loan Optimization Calculator! 👋
@@ -410,7 +388,7 @@ def main():
         - 📊 Analyzing cross-month penalties
         - 🏦 Supporting multi-bank strategies
         - 📈 Maximizing your savings
-        - 📅 **Handling weekends & holidays automatically**
+        - 📅 **Realistic continuous loan calculation**
         
         **How to use:**
         1. Set your loan parameters in the sidebar
@@ -420,7 +398,7 @@ def main():
         
         **Features:**
         - Smart cross-month handling with CITI Call switching
-        - **Weekend/holiday adjustments** (transactions skip Sat/Sun & public holidays)
+        - **Continuous loan timeline** (no skipped days, including weekends/holidays)
         - Visual timeline and comparison charts
         - Detailed loan schedule breakdown
         
