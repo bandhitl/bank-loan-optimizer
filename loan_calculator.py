@@ -97,7 +97,13 @@ class BankLoanCalculator:
                                segment_size: int, bank_name: str, bank_class: str,
                                standard_rate: float, cross_month_rate: float,
                                principal: float, strategy_name: str) -> List[LoanSegment]:
-        """Create standard loan segments for a given bank strategy"""
+        """
+        Create standard loan segments for a given bank strategy
+        
+        IMPORTANT: This function creates CONTINUOUS loan segments without skipping days.
+        In real loan scenarios, interest accrues every day including weekends and holidays.
+        Bank operations may be delayed on non-business days, but the loan continues.
+        """
         segments = []
         remaining_days = total_days
         current_date = start_date
@@ -108,15 +114,12 @@ class BankLoanCalculator:
             segment_days = min(segment_size, remaining_days)
             segment_end_date = current_date + timedelta(days=segment_days-1)
             
-            # *** IMPORTANT: ในชีวิตจริง loan ต้องรันต่อเนื่อง ไม่สามารถข้ามวันได้ ***
-            # ดังนั้นเราจะไม่ปรับ segment_days เพื่อหลีกเลี่ยงวันหยุด
-            # แต่จะเพียงแค่ log เตือนเมื่อ segment จบในวันหยุด
-            
+            # Log if segment ends on weekend/holiday (for awareness only)
             if self.is_weekend_or_holiday(segment_end_date):
                 weekend_type = "weekend" if segment_end_date.weekday() >= 5 else "holiday"
                 self.log_message(
                     f"NOTE: Segment ends on {weekend_type} ({segment_end_date.strftime('%Y-%m-%d')}) - "
-                    f"in real implementation, renewal should be processed on next business day", "WEEKEND"
+                    f"in practice, bank processing would occur on next business day", "WEEKEND"
                 )
             
             # Use original bank but check cross-month logic
@@ -175,19 +178,16 @@ class BankLoanCalculator:
                 crosses_month=will_cross_month
             ))
             
-            # Move to next segment - ALWAYS continuous, no skipping days
+            # CRITICAL: Move to next segment WITHOUT skipping any days
+            # Loan time is continuous - interest accrues every day including weekends/holidays
             next_date = segment_end_date + timedelta(days=1)
             
-            # *** REMOVED WEEKEND SKIPPING LOGIC ***
-            # เนื่องจากใน loan จริง เวลาไม่หยุด ดอกเบี้ยคิดทุกวัน
-            # การข้ามวันจะทำให้การคำนวณผิดพลาด
-            
-            # Log if next segment would start on weekend/holiday (for awareness only)
+            # Log if next segment starts on weekend/holiday (informational only)
             if self.is_weekend_or_holiday(next_date) and remaining_days - segment_days > 0:
                 weekend_type = "weekend" if next_date.weekday() >= 5 else "holiday"
                 self.log_message(
                     f"INFO: Next segment starts on {weekend_type} ({next_date.strftime('%Y-%m-%d')}) - "
-                    f"loan continues but bank operations may be delayed", "WEEKEND"
+                    f"loan continues, bank operations may be delayed", "WEEKEND"
                 )
             
             current_date = next_date
@@ -340,32 +340,191 @@ class BankLoanCalculator:
             print(f"📅 Daily Savings: {daily_savings:,.0f} IDR per day")
         
         print(f"\n📋 LOAN SCHEDULE ({len(strategy.segments)} segments):")
-        print("-" * 60)
+        print("-" * 75)
+        print(f"{'Seg':<3} {'Bank':<12} {'Rate':<6} {'Days':<4} {'Start Date':<11} {'End Date':<11} {'Interest (IDR)':<15} {'Notes'}")
+        print("-" * 75)
         
         cumulative_interest = 0
         for i, segment in enumerate(strategy.segments, 1):
             cumulative_interest += segment.interest
-            cross_indicator = " 🔴" if segment.crosses_month else ""
             
-            # Check if segment dates fall on weekends/holidays
-            start_weekend = "🔸" if self.is_weekend_or_holiday(segment.start_date) else ""
-            end_weekend = "🔸" if self.is_weekend_or_holiday(segment.end_date) else ""
+            # Create notes for special conditions
+            notes = []
+            if segment.crosses_month:
+                notes.append("Cross-month")
+            if self.is_weekend_or_holiday(segment.start_date):
+                notes.append("Start:Weekend/Holiday")
+            if self.is_weekend_or_holiday(segment.end_date):
+                notes.append("End:Weekend/Holiday")
             
-            segment_line = f"{i:2d}. {segment.bank:<12} {segment.rate:>6.2f}% {segment.days:>3d}d {segment.start_date.strftime('%Y-%m-%d')}{start_weekend} → {segment.end_date.strftime('%Y-%m-%d')}{end_weekend} {segment.interest:>12,.0f} IDR{cross_indicator}"
-            print(segment_line)
+            notes_str = ", ".join(notes) if notes else ""
+            
+            print(f"{i:>3d} {segment.bank:<12} {segment.rate:>5.2f}% {segment.days:>3d}d "
+                  f"{segment.start_date.strftime('%Y-%m-%d')} {segment.end_date.strftime('%Y-%m-%d')} "
+                  f"{segment.interest:>13,.0f} {notes_str}")
         
-        print("-" * 60)
-        print(f"{'TOTAL':<23} {cumulative_interest:>21,.0f} IDR")
+        print("-" * 75)
+        print(f"{'TOTAL':<37} {cumulative_interest:>21,.0f} IDR")
         
-        if any(s.crosses_month for s in strategy.segments):
-            print("\n🔴 = Segment crosses month-end (higher rate applied)")
-        
-        # Check for weekend/holiday warnings
+        # Summary notes
+        print(f"\n📋 Summary:")
         weekend_segments = [s for s in strategy.segments 
                           if self.is_weekend_or_holiday(s.start_date) or self.is_weekend_or_holiday(s.end_date)]
         if weekend_segments:
-            print("🔸 = Date falls on weekend/holiday (should be avoided in real implementation)")
+            print(f"   • {len(weekend_segments)} segments involve weekend/holiday dates")
+        
+        cross_month_segments = [s for s in strategy.segments if s.crosses_month]
+        if cross_month_segments:
+            print(f"   • {len(cross_month_segments)} segments cross month-end (higher rates applied)")
+        
+        print(f"   • Loan runs continuously for {total_days} days (including weekends/holidays)")
+        print(f"   • All dates include interest accrual - no days are skipped")
 
 # Example usage and demonstration
 def main():
-    """
+    """Demonstrate the loan calculator with realistic continuous loan logic"""
+    calculator = BankLoanCalculator()
+    
+    # Test scenario that crosses June 1 (Sunday + Pancasila Day)
+    principal = 38_000_000_000  # 38 billion IDR
+    total_days = 10  # Short period to clearly see weekend handling
+    start_date = datetime(2025, 5, 30)  # Friday
+    month_end = datetime(2025, 5, 31)   # Saturday
+    
+    # Bank rates
+    bank_rates = {
+        'citi_3m': 8.69,
+        'citi_call': 7.75,
+        'scbt_1w': 6.20,
+        'scbt_2w': 6.60,
+        'cimb': 7.00,
+        'permata': 7.00,
+        'general_cross_month': 9.20
+    }
+    
+    # Banks to include
+    include_banks = {
+        'CIMB': True,
+        'Permata': False
+    }
+    
+    print("🏦 BANK LOAN OPTIMIZATION CALCULATOR (CONTINUOUS LOAN LOGIC)")
+    print("="*70)
+    print(f"Principal: {principal:,} IDR")
+    print(f"Period: {total_days} days")
+    print(f"Start Date: {start_date.strftime('%Y-%m-%d (%A)')}")
+    print(f"Month End: {month_end.strftime('%Y-%m-%d (%A)')}")
+    
+    # Show what days the loan covers
+    print(f"\n📅 Loan covers these dates:")
+    for i in range(total_days):
+        check_date = start_date + timedelta(days=i)
+        weekend_holiday = ""
+        if calculator.is_weekend_or_holiday(check_date):
+            if check_date.weekday() >= 5:
+                weekend_holiday = " (Weekend)"
+            else:
+                weekend_holiday = " (Holiday)"
+        print(f"   Day {i+1}: {check_date.strftime('%Y-%m-%d (%A)')}{weekend_holiday}")
+    
+    # Calculate optimal strategy
+    all_strategies, best_strategy = calculator.calculate_optimal_strategy(
+        principal=principal,
+        total_days=total_days,
+        start_date=start_date,
+        month_end=month_end,
+        bank_rates=bank_rates,
+        include_banks=include_banks
+    )
+    
+    # Find baseline for comparison
+    baseline_strategy = next((s for s in all_strategies if s.name == 'CITI 3-month' and s.is_valid), None)
+    baseline_interest = baseline_strategy.total_interest if baseline_strategy else None
+    
+    # Print results
+    calculator.print_best_strategy_details(best_strategy, baseline_interest)
+    calculator.print_strategy_comparison(all_strategies, baseline_interest)
+    
+    # Print calculation logs
+    if calculator.calculation_log:
+        print("\n" + "="*50)
+        print("CALCULATION LOGS")
+        print("="*50)
+        for log in calculator.calculation_log:
+            print(log)
+
+if __name__ == "__main__":
+    main()
+Demonstrate the loan calculator with realistic continuous loan logic"""
+    calculator = BankLoanCalculator()
+    
+    # Test scenario that crosses June 1 (Sunday + Pancasila Day)
+    principal = 38_000_000_000  # 38 billion IDR
+    total_days = 10  # Short period to clearly see weekend handling
+    start_date = datetime(2025, 5, 30)  # Friday
+    month_end = datetime(2025, 5, 31)   # Saturday
+    
+    # Bank rates
+    bank_rates = {
+        'citi_3m': 8.69,
+        'citi_call': 7.75,
+        'scbt_1w': 6.20,
+        'scbt_2w': 6.60,
+        'cimb': 7.00,
+        'permata': 7.00,
+        'general_cross_month': 9.20
+    }
+    
+    # Banks to include
+    include_banks = {
+        'CIMB': True,
+        'Permata': False
+    }
+    
+    print("🏦 BANK LOAN OPTIMIZATION CALCULATOR (CONTINUOUS LOAN LOGIC)")
+    print("="*70)
+    print(f"Principal: {principal:,} IDR")
+    print(f"Period: {total_days} days")
+    print(f"Start Date: {start_date.strftime('%Y-%m-%d (%A)')}")
+    print(f"Month End: {month_end.strftime('%Y-%m-%d (%A)')}")
+    
+    # Show what days the loan covers
+    print(f"\n📅 Loan covers these dates:")
+    for i in range(total_days):
+        check_date = start_date + timedelta(days=i)
+        weekend_holiday = ""
+        if calculator.is_weekend_or_holiday(check_date):
+            if check_date.weekday() >= 5:
+                weekend_holiday = " (Weekend)"
+            else:
+                weekend_holiday = " (Holiday)"
+        print(f"   Day {i+1}: {check_date.strftime('%Y-%m-%d (%A)')}{weekend_holiday}")
+    
+    # Calculate optimal strategy
+    all_strategies, best_strategy = calculator.calculate_optimal_strategy(
+        principal=principal,
+        total_days=total_days,
+        start_date=start_date,
+        month_end=month_end,
+        bank_rates=bank_rates,
+        include_banks=include_banks
+    )
+    
+    # Find baseline for comparison
+    baseline_strategy = next((s for s in all_strategies if s.name == 'CITI 3-month' and s.is_valid), None)
+    baseline_interest = baseline_strategy.total_interest if baseline_strategy else None
+    
+    # Print results
+    calculator.print_best_strategy_details(best_strategy, baseline_interest)
+    calculator.print_strategy_comparison(all_strategies, baseline_interest)
+    
+    # Print calculation logs
+    if calculator.calculation_log:
+        print("\n" + "="*50)
+        print("CALCULATION LOGS")
+        print("="*50)
+        for log in calculator.calculation_log:
+            print(log)
+
+if __name__ == "__main__":
+    main()
