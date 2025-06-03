@@ -100,9 +100,11 @@ class BankLoanCalculator:
         """
         Create standard loan segments for a given bank strategy
         
-        IMPORTANT: This function creates CONTINUOUS loan segments without skipping days.
-        In real loan scenarios, interest accrues every day including weekends and holidays.
-        Bank operations may be delayed on non-business days, but the loan continues.
+        REALISTIC BANK OPERATIONS:
+        - Interest accrues continuously (including weekends/holidays)
+        - Bank transactions can ONLY occur on business days
+        - Segment transitions must be planned to avoid weekends/holidays
+        - If a transition would fall on non-business day, it's moved earlier
         """
         segments = []
         remaining_days = total_days
@@ -114,13 +116,25 @@ class BankLoanCalculator:
             segment_days = min(segment_size, remaining_days)
             segment_end_date = current_date + timedelta(days=segment_days-1)
             
-            # Log if segment ends on weekend/holiday (for awareness only)
-            if self.is_weekend_or_holiday(segment_end_date):
-                weekend_type = "weekend" if segment_end_date.weekday() >= 5 else "holiday"
-                self.log_message(
-                    f"NOTE: Segment ends on {weekend_type} ({segment_end_date.strftime('%Y-%m-%d')}) - "
-                    f"in practice, bank processing would occur on next business day", "WEEKEND"
-                )
+            # CRITICAL: Check if bank transaction (segment end) would fall on non-business day
+            # If so, we must end the segment earlier to allow transaction on business day
+            if self.is_weekend_or_holiday(segment_end_date) and segment_days > 1:
+                adjusted_days = segment_days
+                adjusted_end_date = segment_end_date
+                
+                # Move segment end to last business day before the weekend/holiday
+                while self.is_weekend_or_holiday(adjusted_end_date) and adjusted_days > 1:
+                    adjusted_days -= 1
+                    adjusted_end_date = current_date + timedelta(days=adjusted_days-1)
+                
+                if adjusted_days != segment_days:
+                    weekend_type = "weekend" if segment_end_date.weekday() >= 5 else "holiday"
+                    self.log_message(
+                        f"BANK TRANSACTION TIMING: Moved segment end from {segment_end_date.strftime('%Y-%m-%d')} ({weekend_type}) " +
+                        f"to {adjusted_end_date.strftime('%Y-%m-%d')} to enable bank transaction on business day", "WEEKEND"
+                    )
+                    segment_days = adjusted_days
+                    segment_end_date = adjusted_end_date
             
             # Use original bank but check cross-month logic
             use_bank_name = bank_name
@@ -136,9 +150,32 @@ class BankLoanCalculator:
                 days_to_month_end = (month_end - current_date).days + 1
                 
                 if 0 < days_to_month_end < segment_days:
-                    segment_days = days_to_month_end
-                    segment_end_date = month_end
-                    self.log_message(f"SPLIT: Shortened segment to {segment_days} days ending {segment_end_date.strftime('%Y-%m-%d')}", "WARN")
+                    # Check if month-end is a business day for transaction
+                    if self.is_weekend_or_holiday(month_end):
+                        # Find last business day before month-end
+                        business_month_end = month_end
+                        while self.is_weekend_or_holiday(business_month_end):
+                            business_month_end -= timedelta(days=1)
+                        
+                        business_days_to_end = (business_month_end - current_date).days + 1
+                        if business_days_to_end > 0:
+                            segment_days = business_days_to_end
+                            segment_end_date = business_month_end
+                            self.log_message(
+                                f"MONTH-END BUSINESS DAY: Moved segment end to {business_month_end.strftime('%Y-%m-%d')} " +
+                                f"(last business day before month-end {month_end.strftime('%Y-%m-%d')})", "SWITCH"
+                            )
+                        else:
+                            # If we can't find a good business day, use CITI Call
+                            use_bank_name = 'CITI Call'
+                            use_bank_class = 'citi-call'
+                            use_standard_rate = 7.75
+                            use_cross_month_rate = 7.75
+                            self.log_message("CROSS-MONTH UNAVOIDABLE: Using CITI Call due to weekend/holiday constraints", "SWITCH")
+                    else:
+                        segment_days = days_to_month_end
+                        segment_end_date = month_end
+                        self.log_message(f"SPLIT: Shortened segment to {segment_days} days ending {segment_end_date.strftime('%Y-%m-%d')}", "WARN")
                 elif days_to_month_end <= 0 or segment_days >= days_to_month_end:
                     use_bank_name = 'CITI Call'
                     use_bank_class = 'citi-call'
@@ -178,17 +215,50 @@ class BankLoanCalculator:
                 crosses_month=will_cross_month
             ))
             
-            # CRITICAL: Move to next segment WITHOUT skipping any days
-            # Loan time is continuous - interest accrues every day including weekends/holidays
+            # Move to next segment date
             next_date = segment_end_date + timedelta(days=1)
             
-            # Log if next segment starts on weekend/holiday (informational only)
+            # CRITICAL: If next segment would start on weekend/holiday,
+            # we must wait for next business day for bank transaction
             if self.is_weekend_or_holiday(next_date) and remaining_days - segment_days > 0:
                 weekend_type = "weekend" if next_date.weekday() >= 5 else "holiday"
-                self.log_message(
-                    f"INFO: Next segment starts on {weekend_type} ({next_date.strftime('%Y-%m-%d')}) - "
-                    f"loan continues, bank operations may be delayed", "WEEKEND"
-                )
+                
+                # Find next business day for bank transaction
+                business_start_date = next_date
+                while self.is_weekend_or_holiday(business_start_date):
+                    business_start_date += timedelta(days=1)
+                
+                # Calculate gap days (interest continues but no bank transaction)
+                gap_days = (business_start_date - next_date).days
+                
+                if gap_days > 0:
+                    self.log_message(
+                        f"BANK CLOSURE: Next segment delayed from {next_date.strftime('%Y-%m-%d')} ({weekend_type}) " +
+                        f"to {business_start_date.strftime('%Y-%m-%d')} (next business day)", "WEEKEND"
+                    )
+                    
+                    # Create gap segment with same bank (no transaction, just interest continuation)
+                    if gap_days <= remaining_days - segment_days:
+                        gap_end_date = business_start_date - timedelta(days=1)
+                        gap_segment = LoanSegment(
+                            bank=use_bank_name + " (Gap)",
+                            bank_class=effective_bank_class,
+                            rate=effective_rate,
+                            days=gap_days,
+                            start_date=next_date,
+                            end_date=gap_end_date,
+                            interest=self.calculate_interest(principal, effective_rate, gap_days),
+                            crosses_month=False
+                        )
+                        segments.append(gap_segment)
+                        remaining_days -= gap_days
+                        
+                        self.log_message(
+                            f"GAP PERIOD: Added {gap_days}-day gap segment with {use_bank_name} " +
+                            f"(interest continues during bank closure)", "WEEKEND"
+                        )
+                
+                next_date = business_start_date
             
             current_date = next_date
             remaining_days -= segment_days

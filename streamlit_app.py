@@ -313,8 +313,10 @@ def main():
                 if any(s.crosses_month for s in best_strategy.segments):
                     st.info("🔴 = Segment crosses month-end (higher rate applied)")
                 
-                # Add continuous loan info
-                st.info("📅 All dates are included continuously - no days are skipped, including weekends and holidays")
+                # Add realistic bank operations info
+                st.info("🏧 Bank transactions are scheduled only on business days. Interest continues to accrue during weekends/holidays.")
+                st.info("📅 Gap periods may appear when bank transactions are delayed due to weekends/holidays.")
+
             
             with tab3:
                 st.subheader("Strategy Comparison")
@@ -388,7 +390,7 @@ def main():
         - 📊 Analyzing cross-month penalties
         - 🏦 Supporting multi-bank strategies
         - 📈 Maximizing your savings
-        - 📅 **Realistic continuous loan calculation**
+        - 🏧 **Realistic bank transaction scheduling**
         
         **How to use:**
         1. Set your loan parameters in the sidebar
@@ -398,7 +400,9 @@ def main():
         
         **Features:**
         - Smart cross-month handling with CITI Call switching
-        - **Continuous loan timeline** (no skipped days, including weekends/holidays)
+        - **Realistic bank operations** (transactions only on business days)
+        - **Continuous interest calculation** (including weekends/holidays)
+        - **Automatic weekend/holiday avoidance** for bank transactions
         - Visual timeline and comparison charts
         - Detailed loan schedule breakdown
         
