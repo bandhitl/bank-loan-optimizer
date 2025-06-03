@@ -1,3 +1,0 @@
-streamlit==1.35.0
-holidays==0.51
-pandas==2.2.2 # เพิ่ม pandas เข้ามา
