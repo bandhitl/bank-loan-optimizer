@@ -42,12 +42,26 @@ class LoanStrategy:
 
 class BankLoanCalculator:
     def __init__(self):
-        # Indonesian Public Holidays 2025 (can be customized)
+        # Indonesian Public Holidays 2025
         self.holidays_2025 = {
-            '2025-01-01', '2025-01-29', '2025-03-14', '2025-03-29', '2025-03-31',
-            '2025-04-09', '2025-05-01', '2025-05-12', '2025-05-29', '2025-06-06',
-            '2025-06-07', '2025-06-17', '2025-08-12', '2025-08-17', '2025-09-01',
-            '2025-11-10', '2025-12-25'
+            '2025-01-01',  # New Year's Day
+            '2025-01-29',  # Chinese New Year
+            '2025-03-14',  # Nyepi (Balinese New Year)
+            '2025-03-29',  # Maulid Nabi Muhammad
+            '2025-03-31',  # Easter Monday
+            '2025-04-09',  # Isra Miraj
+            '2025-05-01',  # Labour Day
+            '2025-05-12',  # Vesak Day
+            '2025-05-29',  # Ascension Day
+            '2025-06-01',  # Pancasila Day
+            '2025-06-06',  # Eid al-Fitr 1
+            '2025-06-07',  # Eid al-Fitr 2
+            '2025-06-17',  # Independence Day
+            '2025-08-12',  # Eid al-Adha
+            '2025-08-17',  # Independence Day
+            '2025-09-01',  # Islamic New Year
+            '2025-11-10',  # Prophet Muhammad's Birthday
+            '2025-12-25'   # Christmas Day
         }
         self.calculation_log = []
     
@@ -59,12 +73,18 @@ class BankLoanCalculator:
         print(log_entry)
     
     def is_holiday(self, date: datetime) -> bool:
-        """Check if date is a holiday - currently forced to False (no holidays)"""
-        return False  # Force no holidays as per the JS code
+        """Check if date is a public holiday"""
+        date_str = date.strftime('%Y-%m-%d')
+        return date_str in self.holidays_2025
     
     def is_weekend_or_holiday(self, date: datetime) -> bool:
-        """Check if date is weekend or holiday - currently forced to False"""
-        return False  # Force no weekends/holidays as per the JS code
+        """Check if date is weekend (Saturday/Sunday) or holiday"""
+        # Check if it's weekend (Saturday = 5, Sunday = 6)
+        is_weekend = date.weekday() >= 5
+        # Check if it's a public holiday
+        is_public_holiday = self.is_holiday(date)
+        
+        return is_weekend or is_public_holiday
     
     def calculate_interest(self, principal: float, rate: float, days: int) -> float:
         """Calculate interest for given principal, rate and days"""
@@ -93,6 +113,7 @@ class BankLoanCalculator:
             
             # Check if segment would end on weekend/holiday
             if self.is_weekend_or_holiday(segment_end_date) and segment_days > 1:
+                # Adjust segment to end before weekend/holiday
                 adjusted_days = segment_days
                 adjusted_end_date = segment_end_date
                 
@@ -101,312 +122,7 @@ class BankLoanCalculator:
                     adjusted_end_date = current_date + timedelta(days=adjusted_days-1)
                 
                 if adjusted_days != segment_days:
+                    weekend_type = "weekend" if segment_end_date.weekday() >= 5 else "holiday"
                     self.log_message(
-                        f"WEEKEND ADJUST: Shortened segment from {segment_days} to {adjusted_days} days "
-                        f"to avoid ending on {adjusted_end_date.strftime('%Y-%m-%d')}", "WEEKEND"
-                    )
-                    segment_days = adjusted_days
-                    segment_end_date = adjusted_end_date
-            
-            # Use original bank but check cross-month logic
-            use_bank_name = bank_name
-            use_bank_class = bank_class
-            use_standard_rate = standard_rate
-            use_cross_month_rate = cross_month_rate
-            
-            # Check cross-month and CITI Call logic
-            would_cross_month_end = segment_end_date > month_end
-            has_passed_month_end = current_date > month_end
-            
-            if would_cross_month_end and not has_passed_month_end:
-                days_to_month_end = (month_end - current_date).days + 1
-                
-                if 0 < days_to_month_end < segment_days:
-                    segment_days = days_to_month_end
-                    segment_end_date = month_end
-                    self.log_message(
-                        f"SPLIT: Shortened segment to {segment_days} days ending {segment_end_date.strftime('%Y-%m-%d')}", 
-                        "WARN"
-                    )
-                elif days_to_month_end <= 0 or segment_days >= days_to_month_end:
-                    use_bank_name = 'CITI Call'
-                    use_bank_class = 'citi-call'
-                    use_standard_rate = 7.75
-                    use_cross_month_rate = 7.75
-                    self.log_message("CROSS-MONTH: Using CITI Call for segment that crosses month-end", "SWITCH")
-            
-            if has_passed_month_end:
-                days_since_month_end = (current_date - month_end).days
-                
-                if days_since_month_end <= 2:
-                    use_bank_name = 'CITI Call'
-                    use_bank_class = 'citi-call'
-                    use_standard_rate = 7.75
-                    use_cross_month_rate = 7.75
-                    
-                    citi_duration = min(3 - days_since_month_end, segment_days)
-                    segment_days = citi_duration
-                    segment_end_date = current_date + timedelta(days=citi_duration-1)
-                    
-                    self.log_message(f"POST-MONTH: Using CITI Call for {segment_days} days after month-end", "SWITCH")
-            
-            # Calculate effective rate
-            will_cross_month = self.crosses_month_end(current_date, segment_end_date, month_end)
-            effective_rate = use_cross_month_rate if will_cross_month and use_cross_month_rate is not None else use_standard_rate
-            effective_bank_class = use_bank_class + '-cross' if will_cross_month and use_cross_month_rate is not None else use_bank_class
-            
-            # Create segment
-            segments.append(LoanSegment(
-                bank=use_bank_name,
-                bank_class=effective_bank_class,
-                rate=effective_rate,
-                days=segment_days,
-                start_date=current_date,
-                end_date=segment_end_date,
-                interest=self.calculate_interest(principal, effective_rate, segment_days),
-                crosses_month=will_cross_month
-            ))
-            
-            # Move to next segment
-            next_date = segment_end_date + timedelta(days=1)
-            
-            # Check if next day is weekend/holiday
-            if self.is_weekend_or_holiday(next_date) and remaining_days - segment_days > 0:
-                self.log_message(
-                    f"NEXT DAY IS WEEKEND/HOLIDAY: {next_date.strftime('%Y-%m-%d')} - "
-                    "but will still process on next working day", "WEEKEND"
-                )
-                
-                working_date = next_date
-                while self.is_weekend_or_holiday(working_date) and remaining_days - segment_days > 0:
-                    working_date += timedelta(days=1)
-                
-                self.log_message(f"NEXT WORKING DAY: {working_date.strftime('%Y-%m-%d')}", "WEEKEND")
-                next_date = working_date
-            
-            current_date = next_date
-            remaining_days -= segment_days
-        
-        self.log_message(f"Completed {strategy_name}: {len(segments)} segments", "INFO")
-        return segments
-    
-    def calculate_optimal_strategy(self, principal: float, total_days: int, start_date: datetime,
-                                 month_end: datetime, bank_rates: Dict[str, float],
-                                 include_banks: Dict[str, bool] = None) -> Tuple[List[LoanStrategy], LoanStrategy]:
-        """
-        Calculate optimal loan strategy
-        
-        Args:
-            principal: Loan amount in IDR
-            total_days: Loan period in days
-            start_date: Loan start date
-            month_end: Month end date for cross-month calculation
-            bank_rates: Dictionary of bank rates
-            include_banks: Dictionary of which banks to include
-        
-        Returns:
-            Tuple of (all_strategies, best_strategy)
-        """
-        self.calculation_log = []
-        
-        if include_banks is None:
-            include_banks = {'CIMB': True, 'Permata': False}
-        
-        self.log_message(
-            f"Calculation Start: Principal={principal:,.0f}, Days={total_days}, "
-            f"Start={start_date.strftime('%Y-%m-%d')}, MonthEnd={month_end.strftime('%Y-%m-%d')}", "INFO"
-        )
-        
-        strategies = []
-        
-        # CITI 3-month baseline
-        if total_days > 0:
-            loan_end_date = start_date + timedelta(days=total_days-1)
-            citi_crosses = self.crosses_month_end(start_date, loan_end_date, month_end)
-            citi_effective_rate = bank_rates['general_cross_month'] if citi_crosses else bank_rates['citi_3m']
-            
-            citi_segment = LoanSegment(
-                bank='CITI 3M',
-                bank_class='citi-cross' if citi_crosses else 'citi',
-                rate=citi_effective_rate,
-                days=total_days,
-                start_date=start_date,
-                end_date=loan_end_date,
-                interest=self.calculate_interest(principal, citi_effective_rate, total_days),
-                crosses_month=citi_crosses
-            )
-            
-            strategies.append(LoanStrategy('CITI 3-month', [citi_segment]))
-        else:
-            strategies.append(LoanStrategy('CITI 3-month', []))
-        
-        # Other strategies
-        if total_days > 0:
-            # SCBT 1-week
-            scbt_1w_segments = self.create_standard_segments(
-                start_date, total_days, month_end, 7, 'SCBT 1w', 'scbt',
-                bank_rates['scbt_1w'], bank_rates['general_cross_month'], principal, 'SCBT 1w Standard'
-            )
-            strategies.append(LoanStrategy('SCBT 1-week Standard', scbt_1w_segments))
-            
-            # SCBT 2-week
-            scbt_2w_segments = self.create_standard_segments(
-                start_date, total_days, month_end, 14, 'SCBT 2w', 'scbt',
-                bank_rates['scbt_2w'], bank_rates['general_cross_month'], principal, 'SCBT 2w Standard'
-            )
-            strategies.append(LoanStrategy('SCBT 2-week Standard', scbt_2w_segments))
-            
-            # CIMB 1-month (if included)
-            if include_banks.get('CIMB', False):
-                cimb_segments = self.create_standard_segments(
-                    start_date, total_days, month_end, 30, 'CIMB 1M', 'cimb',
-                    bank_rates['cimb'], bank_rates['general_cross_month'], principal, 'CIMB 1M Standard'
-                )
-                strategies.append(LoanStrategy('CIMB 1-month Standard', cimb_segments))
-            
-            # Permata 1-month (if included)
-            if include_banks.get('Permata', False):
-                permata_segments = self.create_standard_segments(
-                    start_date, total_days, month_end, 30, 'Permata 1M', 'permata',
-                    bank_rates['permata'], bank_rates['general_cross_month'], principal, 'Permata 1M Standard'
-                )
-                strategies.append(LoanStrategy('Permata 1-month Standard', permata_segments))
-        
-        # Sort strategies by total interest
-        valid_strategies = [s for s in strategies if s.is_valid and s.total_interest != float('inf')]
-        valid_strategies.sort(key=lambda x: x.total_interest)
-        
-        # Find best strategy
-        best_strategy = valid_strategies[0] if valid_strategies else None
-        
-        return strategies, best_strategy
-    
-    def print_strategy_comparison(self, strategies: List[LoanStrategy], baseline_interest: float = None):
-        """Print comparison of all strategies"""
-        print("\n" + "="*80)
-        print("STRATEGY COMPARISON")
-        print("="*80)
-        
-        if baseline_interest is None and strategies:
-            baseline_strategy = next((s for s in strategies if s.name == 'CITI 3-month' and s.is_valid), None)
-            baseline_interest = baseline_strategy.total_interest if baseline_strategy else 0
-        
-        print(f"{'Strategy':<25} {'Avg Rate':<10} {'Total Interest':<15} {'Savings':<12} {'% Save':<8} {'Status'}")
-        print("-" * 80)
-        
-        for strategy in strategies:
-            if strategy.is_valid and strategy.total_interest != float('inf'):
-                savings = baseline_interest - strategy.total_interest
-                savings_pct = (savings / baseline_interest * 100) if baseline_interest > 0 else 0
-                status = "✓ Valid"
-                if strategy.uses_multi_banks:
-                    status += " (Multi-Bank)"
-            else:
-                savings = float('inf')
-                savings_pct = 0
-                status = "✗ Invalid"
-            
-            print(f"{strategy.name:<25} {strategy.average_rate:>7.2f}% "
-                  f"{strategy.total_interest:>12,.0f} {savings:>10,.0f} {savings_pct:>6.1f}% {status}")
-    
-    def print_best_strategy_details(self, strategy: LoanStrategy, baseline_interest: float = None):
-        """Print detailed information about the best strategy"""
-        if not strategy or not strategy.is_valid:
-            print("\n❌ No valid optimal strategy found")
-            return
-        
-        print("\n" + "="*60)
-        print(f"🏆 OPTIMAL STRATEGY: {strategy.name}")
-        print("="*60)
-        
-        savings = baseline_interest - strategy.total_interest if baseline_interest else 0
-        savings_pct = (savings / baseline_interest * 100) if baseline_interest and baseline_interest > 0 else 0
-        
-        print(f"📊 Average Interest Rate: {strategy.average_rate:.2f}%")
-        print(f"💰 Total Interest: {strategy.total_interest:,.0f} IDR")
-        if baseline_interest:
-            print(f"💵 Total Savings: {savings:,.0f} IDR ({savings_pct:.2f}% vs baseline)")
-            daily_savings = savings / sum(s.days for s in strategy.segments) if strategy.segments else 0
-            print(f"📅 Daily Savings: {daily_savings:,.0f} IDR per day")
-        
-        print(f"\n📋 LOAN SCHEDULE ({len(strategy.segments)} segments):")
-        print("-" * 60)
-        
-        cumulative_interest = 0
-        for i, segment in enumerate(strategy.segments, 1):
-            cumulative_interest += segment.interest
-            cross_indicator = " 🔴" if segment.crosses_month else ""
-            print(f"{i:2d}. {segment.bank:<12} {segment.rate:>6.2f}% "
-                  f"{segment.days:>3d}d {segment.start_date.strftime('%Y-%m-%d')} → "
-                  f"{segment.end_date.strftime('%Y-%m-%d')} "
-                  f"{segment.interest:>12,.0f} IDR{cross_indicator}")
-        
-        print("-" * 60)
-        print(f"{'TOTAL':<23} {cumulative_interest:>21,.0f} IDR")
-        
-        if any(s.crosses_month for s in strategy.segments):
-            print("\n🔴 = Segment crosses month-end (higher rate applied)")
-
-# Example usage and demonstration
-def main():
-    """Demonstrate the loan calculator with example data"""
-    calculator = BankLoanCalculator()
-    
-    # Example parameters (matching the HTML form defaults)
-    principal = 38_000_000_000  # 38 billion IDR
-    total_days = 30
-    start_date = datetime(2025, 5, 29)
-    month_end = datetime(2025, 5, 31)
-    
-    # Bank rates (matching HTML defaults)
-    bank_rates = {
-        'citi_3m': 8.69,
-        'citi_call': 7.75,
-        'scbt_1w': 6.20,
-        'scbt_2w': 6.60,
-        'cimb': 7.00,
-        'permata': 7.00,
-        'general_cross_month': 9.20
-    }
-    
-    # Banks to include
-    include_banks = {
-        'CIMB': True,
-        'Permata': False
-    }
-    
-    print("🏦 BANK LOAN OPTIMIZATION CALCULATOR")
-    print("="*50)
-    print(f"Principal: {principal:,} IDR")
-    print(f"Period: {total_days} days")
-    print(f"Start Date: {start_date.strftime('%Y-%m-%d')}")
-    print(f"Month End: {month_end.strftime('%Y-%m-%d')}")
-    
-    # Calculate optimal strategy
-    all_strategies, best_strategy = calculator.calculate_optimal_strategy(
-        principal=principal,
-        total_days=total_days,
-        start_date=start_date,
-        month_end=month_end,
-        bank_rates=bank_rates,
-        include_banks=include_banks
-    )
-    
-    # Find baseline for comparison
-    baseline_strategy = next((s for s in all_strategies if s.name == 'CITI 3-month' and s.is_valid), None)
-    baseline_interest = baseline_strategy.total_interest if baseline_strategy else None
-    
-    # Print results
-    calculator.print_best_strategy_details(best_strategy, baseline_interest)
-    calculator.print_strategy_comparison(all_strategies, baseline_interest)
-    
-    # Print calculation logs
-    if calculator.calculation_log:
-        print("\n" + "="*50)
-        print("CALCULATION LOGS")
-        print("="*50)
-        for log in calculator.calculation_log:
-            print(log)
-
-if __name__ == "__main__":
-    main()
+                        f"WEEKEND/HOLIDAY ADJUST: Shortened segment from {segment_days} to {adjusted_days} days "
+                        f"to avoid ending on {weekend_type} ({segment_end_date.strftime('%Y-%m-%d')})", "WEEKEND

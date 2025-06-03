@@ -312,6 +312,14 @@ def main():
                 
                 if any(s.crosses_month for s in best_strategy.segments):
                     st.info("🔴 = Segment crosses month-end (higher rate applied)")
+                
+                # Add weekend/holiday info
+                weekend_segments = [s for s in best_strategy.segments if any(
+                    calculator.is_weekend_or_holiday(s.start_date + timedelta(days=i)) 
+                    for i in range(s.days)
+                )]
+                if weekend_segments:
+                    st.info("📅 System automatically adjusted segments to avoid weekend/holiday endings")
             
             with tab3:
                 st.subheader("Strategy Comparison")
@@ -376,6 +384,7 @@ def main():
             st.error("❌ Unable to calculate optimal strategy. Please check your inputs.")
     
     else:
+                
         # Welcome message
         st.markdown("""
         ## Welcome to the Bank Loan Optimization Calculator! 👋
@@ -385,6 +394,7 @@ def main():
         - 📊 Analyzing cross-month penalties
         - 🏦 Supporting multi-bank strategies
         - 📈 Maximizing your savings
+        - 📅 **Handling weekends & holidays automatically**
         
         **How to use:**
         1. Set your loan parameters in the sidebar
@@ -394,7 +404,7 @@ def main():
         
         **Features:**
         - Smart cross-month handling with CITI Call switching
-        - Weekend/holiday adjustments
+        - **Weekend/holiday adjustments** (transactions skip Sat/Sun & public holidays)
         - Visual timeline and comparison charts
         - Detailed loan schedule breakdown
         
