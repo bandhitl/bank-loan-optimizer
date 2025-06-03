@@ -1,5 +1,6 @@
 import streamlit as st
-from datetime import date
+from datetime import date, timedelta
+import holidays
 from typing import List, Dict
 
 # Import the core logic from mail.py
@@ -38,6 +39,17 @@ with col1:
     
     month_end = st.date_input("วันที่สิ้นเดือน (สำหรับพิจารณาอัตราข้ามเดือน)", value=default_month_end_date)
 
+    # Warn users if selected dates fall on weekends or Indonesian public holidays
+    id_holidays = holidays.country_holidays("ID")
+
+    def is_bank_holiday(d: date) -> bool:
+        return d.weekday() >= 5 or d in id_holidays
+
+    if is_bank_holiday(start_date):
+        st.warning("วันที่เริ่มต้นตรงกับวันหยุดธนาคาร อาจไม่สามารถทำธุรกรรมได้")
+
+    if is_bank_holiday(month_end):
+        st.warning("วันที่สิ้นเดือนตรงกับวันหยุดธนาคาร อาจต้องเลือกวันทำการถัดไป")
 
 with col2:
     st.header("อัตราดอกเบี้ยธนาคาร (%)")
