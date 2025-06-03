@@ -1,4 +1,20 @@
-import streamlit as st
+        ## Welcome to the Bank Loan Optimization Calculator! 👋
+        
+        This tool helps you find the optimal loan strategy by:
+        - 🔄 Comparing different bank offerings
+        - 📊 Analyzing cross-month penalties
+        - 🏦 Supporting multi-bank strategies
+        - 📈 Maximizing your savings
+        - 📅 **Realistic continuous loan calculation**
+        
+        **How to use:**
+        1. Set your loan parameters in the sidebar
+        2. Configure bank interest rates
+        3. Click "Calculate Optimal Strategy"
+        4. Review the results and timeline
+        
+        **Features:**
+        - Smart cross-month handlingimport streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta

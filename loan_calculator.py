@@ -79,11 +79,8 @@ class BankLoanCalculator:
     
     def is_weekend_or_holiday(self, date: datetime) -> bool:
         """Check if date is weekend (Saturday/Sunday) or holiday"""
-        # Check if it's weekend (Saturday = 5, Sunday = 6)
         is_weekend = date.weekday() >= 5
-        # Check if it's a public holiday
         is_public_holiday = self.is_holiday(date)
-        
         return is_weekend or is_public_holiday
     
     def calculate_interest(self, principal: float, rate: float, days: int) -> float:
@@ -111,24 +108,16 @@ class BankLoanCalculator:
             segment_days = min(segment_size, remaining_days)
             segment_end_date = current_date + timedelta(days=segment_days-1)
             
-            # Check if segment would end on weekend/holiday
-            if self.is_weekend_or_holiday(segment_end_date) and segment_days > 1:
-                # Adjust segment to end before weekend/holiday
-                adjusted_days = segment_days
-                adjusted_end_date = segment_end_date
-                
-                while self.is_weekend_or_holiday(adjusted_end_date) and adjusted_days > 1:
-                    adjusted_days -= 1
-                    adjusted_end_date = current_date + timedelta(days=adjusted_days-1)
-                
-                if adjusted_days != segment_days:
-                    weekend_type = "weekend" if segment_end_date.weekday() >= 5 else "holiday"
-                    self.log_message(
-                        f"WEEKEND/HOLIDAY ADJUST: Shortened segment from {segment_days} to {adjusted_days} days " +
-                        f"to avoid ending on {weekend_type} ({segment_end_date.strftime('%Y-%m-%d')})", "WEEKEND"
-                    )
-                    segment_days = adjusted_days
-                    segment_end_date = adjusted_end_date
+            # *** IMPORTANT: ในชีวิตจริง loan ต้องรันต่อเนื่อง ไม่สามารถข้ามวันได้ ***
+            # ดังนั้นเราจะไม่ปรับ segment_days เพื่อหลีกเลี่ยงวันหยุด
+            # แต่จะเพียงแค่ log เตือนเมื่อ segment จบในวันหยุด
+            
+            if self.is_weekend_or_holiday(segment_end_date):
+                weekend_type = "weekend" if segment_end_date.weekday() >= 5 else "holiday"
+                self.log_message(
+                    f"NOTE: Segment ends on {weekend_type} ({segment_end_date.strftime('%Y-%m-%d')}) - "
+                    f"in real implementation, renewal should be processed on next business day", "WEEKEND"
+                )
             
             # Use original bank but check cross-month logic
             use_bank_name = bank_name
@@ -146,10 +135,7 @@ class BankLoanCalculator:
                 if 0 < days_to_month_end < segment_days:
                     segment_days = days_to_month_end
                     segment_end_date = month_end
-                    self.log_message(
-                        f"SPLIT: Shortened segment to {segment_days} days ending {segment_end_date.strftime('%Y-%m-%d')}", 
-                        "WARN"
-                    )
+                    self.log_message(f"SPLIT: Shortened segment to {segment_days} days ending {segment_end_date.strftime('%Y-%m-%d')}", "WARN")
                 elif days_to_month_end <= 0 or segment_days >= days_to_month_end:
                     use_bank_name = 'CITI Call'
                     use_bank_class = 'citi-call'
@@ -189,24 +175,20 @@ class BankLoanCalculator:
                 crosses_month=will_cross_month
             ))
             
-            # Move to next segment
+            # Move to next segment - ALWAYS continuous, no skipping days
             next_date = segment_end_date + timedelta(days=1)
             
-            # Check if next day is weekend/holiday
+            # *** REMOVED WEEKEND SKIPPING LOGIC ***
+            # เนื่องจากใน loan จริง เวลาไม่หยุด ดอกเบี้ยคิดทุกวัน
+            # การข้ามวันจะทำให้การคำนวณผิดพลาด
+            
+            # Log if next segment would start on weekend/holiday (for awareness only)
             if self.is_weekend_or_holiday(next_date) and remaining_days - segment_days > 0:
                 weekend_type = "weekend" if next_date.weekday() >= 5 else "holiday"
                 self.log_message(
-                    f"NEXT DAY IS {weekend_type.upper()}: {next_date.strftime('%Y-%m-%d')} - " +
-                    "moving to next working day", "WEEKEND"
+                    f"INFO: Next segment starts on {weekend_type} ({next_date.strftime('%Y-%m-%d')}) - "
+                    f"loan continues but bank operations may be delayed", "WEEKEND"
                 )
-                
-                # Find next working day
-                working_date = next_date
-                while self.is_weekend_or_holiday(working_date) and remaining_days - segment_days > 0:
-                    working_date += timedelta(days=1)
-                
-                self.log_message(f"NEXT WORKING DAY: {working_date.strftime('%Y-%m-%d')}", "WEEKEND")
-                next_date = working_date
             
             current_date = next_date
             remaining_days -= segment_days
@@ -237,10 +219,8 @@ class BankLoanCalculator:
             include_banks = {'CIMB': True, 'Permata': False}
         
         start_day_name = start_date.strftime('%A')
-        self.log_message(
-            f"Calculation Start: Principal={principal:,.0f}, Days={total_days}, " +
-            f"Start={start_date.strftime('%Y-%m-%d')} ({start_day_name}), MonthEnd={month_end.strftime('%Y-%m-%d')}", "INFO"
-        )
+        msg = f"Calculation Start: Principal={principal:,.0f}, Days={total_days}, Start={start_date.strftime('%Y-%m-%d')} ({start_day_name}), MonthEnd={month_end.strftime('%Y-%m-%d')}"
+        self.log_message(msg, "INFO")
         
         # Log weekend/holiday status of start date
         if self.is_weekend_or_holiday(start_date):
@@ -336,8 +316,8 @@ class BankLoanCalculator:
                 savings_pct = 0
                 status = "✗ Invalid"
             
-            print(f"{strategy.name:<25} {strategy.average_rate:>7.2f}% " +
-                  f"{strategy.total_interest:>12,.0f} {savings:>10,.0f} {savings_pct:>6.1f}% {status}")
+            status_line = f"{strategy.name:<25} {strategy.average_rate:>7.2f}% {strategy.total_interest:>12,.0f} {savings:>10,.0f} {savings_pct:>6.1f}% {status}"
+            print(status_line)
     
     def print_best_strategy_details(self, strategy: LoanStrategy, baseline_interest: float = None):
         """Print detailed information about the best strategy"""
@@ -371,10 +351,8 @@ class BankLoanCalculator:
             start_weekend = "🔸" if self.is_weekend_or_holiday(segment.start_date) else ""
             end_weekend = "🔸" if self.is_weekend_or_holiday(segment.end_date) else ""
             
-            print(f"{i:2d}. {segment.bank:<12} {segment.rate:>6.2f}% " +
-                  f"{segment.days:>3d}d {segment.start_date.strftime('%Y-%m-%d')}{start_weekend} → " +
-                  f"{segment.end_date.strftime('%Y-%m-%d')}{end_weekend} " +
-                  f"{segment.interest:>12,.0f} IDR{cross_indicator}")
+            segment_line = f"{i:2d}. {segment.bank:<12} {segment.rate:>6.2f}% {segment.days:>3d}d {segment.start_date.strftime('%Y-%m-%d')}{start_weekend} → {segment.end_date.strftime('%Y-%m-%d')}{end_weekend} {segment.interest:>12,.0f} IDR{cross_indicator}"
+            print(segment_line)
         
         print("-" * 60)
         print(f"{'TOTAL':<23} {cumulative_interest:>21,.0f} IDR")
@@ -390,70 +368,4 @@ class BankLoanCalculator:
 
 # Example usage and demonstration
 def main():
-    """Demonstrate the loan calculator with example data"""
-    calculator = BankLoanCalculator()
-    
-    # Example parameters - testing weekend scenario
-    principal = 38_000_000_000  # 38 billion IDR
-    total_days = 30
-    start_date = datetime(2025, 5, 29)  # Thursday - should be safe
-    month_end = datetime(2025, 5, 31)   # Saturday - weekend!
-    
-    # Bank rates (matching HTML defaults)
-    bank_rates = {
-        'citi_3m': 8.69,
-        'citi_call': 7.75,
-        'scbt_1w': 6.20,
-        'scbt_2w': 6.60,
-        'cimb': 7.00,
-        'permata': 7.00,
-        'general_cross_month': 9.20
-    }
-    
-    # Banks to include
-    include_banks = {
-        'CIMB': True,
-        'Permata': False
-    }
-    
-    print("🏦 BANK LOAN OPTIMIZATION CALCULATOR")
-    print("="*50)
-    print(f"Principal: {principal:,} IDR")
-    print(f"Period: {total_days} days")
-    print(f"Start Date: {start_date.strftime('%Y-%m-%d (%A)')}")
-    print(f"Month End: {month_end.strftime('%Y-%m-%d (%A)')}")
-    
-    # Test weekend detection
-    print(f"\n📅 Weekend/Holiday Check:")
-    print(f"Start date is weekend/holiday: {calculator.is_weekend_or_holiday(start_date)}")
-    print(f"Month end is weekend/holiday: {calculator.is_weekend_or_holiday(month_end)}")
-    print(f"June 1, 2025 is weekend/holiday: {calculator.is_weekend_or_holiday(datetime(2025, 6, 1))}")
-    
-    # Calculate optimal strategy
-    all_strategies, best_strategy = calculator.calculate_optimal_strategy(
-        principal=principal,
-        total_days=total_days,
-        start_date=start_date,
-        month_end=month_end,
-        bank_rates=bank_rates,
-        include_banks=include_banks
-    )
-    
-    # Find baseline for comparison
-    baseline_strategy = next((s for s in all_strategies if s.name == 'CITI 3-month' and s.is_valid), None)
-    baseline_interest = baseline_strategy.total_interest if baseline_strategy else None
-    
-    # Print results
-    calculator.print_best_strategy_details(best_strategy, baseline_interest)
-    calculator.print_strategy_comparison(all_strategies, baseline_interest)
-    
-    # Print calculation logs
-    if calculator.calculation_log:
-        print("\n" + "="*50)
-        print("CALCULATION LOGS")
-        print("="*50)
-        for log in calculator.calculation_log:
-            print(log)
-
-if __name__ == "__main__":
-    main()
+    """
