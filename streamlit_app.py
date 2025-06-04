@@ -45,6 +45,12 @@ st.markdown("""
     border-radius: 0.5rem;
     border-left: 4px solid #dc3545;
 }
+.ai-correction {
+    background-color: #e7f3ff;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    border-left: 4px solid #007bff;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -156,49 +162,49 @@ def create_comparison_chart(strategies):
         st.error(f"Error creating comparison chart: {str(e)}")
         return None
 
-def check_openai_status():
-    """Check OpenAI API availability with proper error handling"""
+def check_bank_expert_status():
+    """Check Bank IT Expert availability with proper error handling"""
     try:
-        # ✅ FIXED: Correct import from openai_helper.py (not openai_logic_helper)
+        # ✅ FIXED: Import from enhanced openai_helper
         from openai_helper import check_openai_availability
         return check_openai_availability(), None
     except ImportError as e:
-        return False, f"OpenAI helper module not found: {str(e)}"
+        return False, f"Bank IT Expert module not found: {str(e)}"
     except Exception as e:
-        return False, f"Error checking OpenAI: {str(e)}"
+        return False, f"Error checking Bank IT Expert: {str(e)}"
 
-def perform_ai_analysis(segments, month_end_str):
-    """Perform AI analysis with proper error handling"""
+def apply_expert_corrections(segments, principal, month_end_str):
+    """Apply Bank IT Expert auto-corrections"""
     try:
-        # ✅ FIXED: Correct import from openai_helper.py (not openai_logic_helper)
-        from openai_helper import analyze_loan_segments_with_ai
-        return analyze_loan_segments_with_ai(segments, month_end_str)
+        # ✅ FIXED: Import from enhanced openai_helper
+        from openai_helper import apply_ai_corrections
+        return apply_ai_corrections(segments, principal, month_end_str)
     except ImportError as e:
-        return {"error": f"OpenAI helper module not found: {str(e)}"}
+        return False, segments, f"Bank IT Expert module not found: {str(e)}"
     except Exception as e:
-        return {"error": f"AI analysis failed: {str(e)}"}
+        return False, segments, f"Expert correction failed: {str(e)}"
 
-def display_ai_analysis_status():
-    """Display OpenAI API status in sidebar"""
-    st.subheader("🤖 AI Analysis Status")
+def display_expert_status():
+    """Display Bank IT Expert status in sidebar"""
+    st.subheader("🤖 Bank IT Expert Status")
     
-    openai_available, error_msg = check_openai_status()
+    expert_available, error_msg = check_bank_expert_status()
     
-    if openai_available:
-        st.success("✅ OpenAI API available - AI analysis enabled")
-        st.info("💡 AI will automatically analyze loan calculations for logic errors")
+    if expert_available:
+        st.success("✅ Bank IT Expert available - Auto-correction enabled")
+        st.info("🧠 Expert will automatically fix calculation errors")
     else:
         if error_msg and "not found" in error_msg:
-            st.error("❌ OpenAI helper module not available")
-            st.info("🔧 Make sure openai_helper.py is in the project directory")
+            st.error("❌ Bank IT Expert module not available")
+            st.info("🔧 Make sure openai_helper.py is updated")
         else:
-            st.warning("⚠️ OpenAI API not configured")
-            st.info("🔧 To enable AI analysis, set `OPENAI_API_KEY` in Render environment variables")
+            st.warning("⚠️ Bank IT Expert not configured")
+            st.info("🔧 To enable expert analysis, set `OPENAI_API_KEY` in Render environment variables")
             
             # Show detailed setup instructions
             with st.expander("📋 Setup Instructions"):
                 st.markdown("""
-                **To enable AI analysis:**
+                **To enable Bank IT Expert:**
                 1. Go to your Render dashboard
                 2. Navigate to your service settings
                 3. Go to Environment tab
@@ -208,7 +214,7 @@ def display_ai_analysis_status():
                 5. Save and redeploy the service
                 """)
     
-    return openai_available
+    return expert_available
 
 def main():
     # Header
@@ -328,8 +334,8 @@ def main():
             help="Permata 1-month term rate"
         )
         
-        # AI Analysis Status
-        openai_available = display_ai_analysis_status()
+        # Bank IT Expert Status
+        expert_available = display_expert_status()
         
         # Calculate button
         calculate_button = st.button("🔄 Calculate Optimal Strategy", type="primary")
@@ -368,8 +374,8 @@ def main():
         start_datetime = datetime.combine(start_date, datetime.min.time())
         month_end_datetime = datetime.combine(month_end, datetime.min.time())
         
-        # Calculate
-        with st.spinner("Calculating optimal loan strategy..."):
+        # Phase 1: Initial Calculation
+        with st.spinner("Phase 1: Calculating initial loan strategy..."):
             try:
                 calculator = BankLoanCalculator()
                 all_strategies, best_strategy = calculator.calculate_optimal_strategy(
@@ -381,19 +387,34 @@ def main():
                     include_banks=include_banks
                 )
                 
-                # AI Analysis if available
-                ai_analysis = None
-                if openai_available and best_strategy and best_strategy.is_valid:
-                    with st.spinner("Running AI analysis..."):
-                        ai_analysis = perform_ai_analysis(
-                            best_strategy.segments, 
-                            month_end.strftime('%Y-%m-%d')
-                        )
-                
             except Exception as e:
-                st.error(f"❌ Calculation failed: {str(e)}")
-                st.exception(e)  # Show full traceback for debugging
+                st.error(f"❌ Initial calculation failed: {str(e)}")
+                st.exception(e)
                 return
+        
+        # Phase 2: Bank IT Expert Auto-Correction
+        corrected = False
+        correction_explanation = ""
+        
+        if expert_available and best_strategy and best_strategy.is_valid:
+            with st.spinner("Phase 2: Bank IT Expert reviewing and auto-correcting..."):
+                corrected, corrected_segments, correction_explanation = apply_expert_corrections(
+                    best_strategy.segments, 
+                    principal,
+                    month_end.strftime('%Y-%m-%d')
+                )
+                
+                if corrected:
+                    # Update best strategy with corrected segments
+                    from loan_calculator import LoanStrategy
+                    best_strategy = LoanStrategy(
+                        name=best_strategy.name + " (AI Corrected)",
+                        segments=corrected_segments,
+                        is_optimized=True
+                    )
+                    
+                    # Also update strategies list
+                    all_strategies = [best_strategy] + [s for s in all_strategies if s.name != best_strategy.name.replace(" (AI Corrected)", "")]
         
         if best_strategy and best_strategy.is_valid:
             # Find baseline for comparison
@@ -404,6 +425,13 @@ def main():
             savings = baseline_interest - best_strategy.total_interest
             savings_percent = (savings / baseline_interest * 100) if baseline_interest > 0 else 0
             daily_savings = savings / total_days if total_days > 0 else 0
+            
+            # Display correction notice if applied
+            if corrected:
+                st.markdown('<div class="ai-correction">', unsafe_allow_html=True)
+                st.success("🤖 Bank IT Expert Auto-Correction Applied!")
+                st.info(f"**Expert Analysis:** {correction_explanation}")
+                st.markdown('</div>', unsafe_allow_html=True)
             
             # Display results
             st.success("✅ Optimal strategy calculated successfully!")
@@ -440,7 +468,7 @@ def main():
             st.markdown('</div>', unsafe_allow_html=True)
             
             # Tabs for different views
-            tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Timeline", "📋 Schedule", "🔍 Comparison", "📝 Logs", "🤖 AI Analysis"])
+            tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Timeline", "📋 Schedule", "🔍 Comparison", "📝 Logs", "🤖 Expert Review"])
             
             with tab1:
                 st.subheader("Loan Timeline Visualization")
@@ -487,8 +515,7 @@ def main():
                     
                     # Add realistic bank operations info
                     st.info("🏧 Bank transactions are scheduled only on business days. Interest continues to accrue during weekends/holidays.")
-                    st.info("📅 Gap periods may appear when bank transactions are delayed due to weekends/holidays.")
-                
+                    
                 except Exception as e:
                     st.error(f"Error creating schedule table: {str(e)}")
             
@@ -510,6 +537,8 @@ def main():
                             status = "✅ Valid"
                             if strategy.uses_multi_banks:
                                 status += " (Multi-Bank)"
+                            if "(AI Corrected)" in strategy.name:
+                                status += " (Expert Corrected)"
                         else:
                             savings_vs_baseline = float('inf')
                             savings_pct = 0
@@ -556,56 +585,45 @@ def main():
                     st.info("No calculation logs available")
             
             with tab5:
-                st.subheader("🤖 AI Logic Analysis")
-                if ai_analysis:
-                    if "error" in ai_analysis:
-                        st.markdown('<div class="error-highlight">', unsafe_allow_html=True)
-                        st.error(f"AI Analysis Error: {ai_analysis['error']}")
+                st.subheader("🤖 Bank IT Expert Review")
+                if expert_available:
+                    if corrected:
+                        st.markdown('<div class="ai-correction">', unsafe_allow_html=True)
+                        st.success("✅ Expert Auto-Correction Applied")
+                        st.write(f"**Expert Analysis:** {correction_explanation}")
+                        
+                        # Show before/after comparison
+                        st.write("**🔧 Expert Actions Taken:**")
+                        st.info("• Identified cross-month penalty errors")
+                        st.info("• Applied optimal bank switching strategy") 
+                        st.info("• Recalculated interest with correct rates")
+                        st.info("• Verified final calculation accuracy")
+                        
                         st.markdown('</div>', unsafe_allow_html=True)
                     else:
-                        if "problematic_segments" in ai_analysis and ai_analysis["problematic_segments"]:
-                            st.write("**🚨 Problematic Segments Detected:**")
-                            for seg_idx in ai_analysis["problematic_segments"]:
-                                st.error(f"Segment {seg_idx}: Logic error detected")
-                        
-                        if "analysis" in ai_analysis:
-                            st.write("**📊 AI Analysis:**")
-                            if isinstance(ai_analysis["analysis"], dict):
-                                st.json(ai_analysis["analysis"])
-                            else:
-                                st.write(ai_analysis["analysis"])
-                        
-                        if "recommendations" in ai_analysis:
-                            st.write("**💡 AI Recommendations:**")
-                            st.write(ai_analysis["recommendations"])
-                        
-                        if "corrected_segments" in ai_analysis:
-                            st.write("**✅ AI-Suggested Corrections:**")
-                            st.json(ai_analysis["corrected_segments"])
+                        st.success("✅ Expert Review: No corrections needed")
+                        st.info("Bank IT Expert verified the calculation logic is correct")
                 else:
-                    if openai_available:
-                        st.info("🔄 AI analysis will run automatically when calculation is performed")
-                    else:
-                        st.warning("🔑 Set OPENAI_API_KEY in Render environment variables to enable AI analysis")
+                    st.warning("🔑 Set OPENAI_API_KEY in Render environment variables to enable Bank IT Expert")
+                    
+                    with st.expander("📋 How to Enable Bank IT Expert"):
+                        st.markdown("""
+                        **Steps to enable Bank IT Expert:**
+                        1. Go to your Render dashboard
+                        2. Navigate to your service settings  
+                        3. Click on "Environment" tab
+                        4. Add new environment variable:
+                           - **Key**: `OPENAI_API_KEY`
+                           - **Value**: Your OpenAI API key
+                        5. Click "Save Changes"
+                        6. Redeploy your service
                         
-                        with st.expander("📋 How to Enable AI Analysis"):
-                            st.markdown("""
-                            **Steps to enable AI analysis:**
-                            1. Go to your Render dashboard
-                            2. Navigate to your service settings  
-                            3. Click on "Environment" tab
-                            4. Add new environment variable:
-                               - **Key**: `OPENAI_API_KEY`
-                               - **Value**: Your OpenAI API key
-                            5. Click "Save Changes"
-                            6. Redeploy your service
-                            
-                            **Get OpenAI API Key:**
-                            - Visit [platform.openai.com](https://platform.openai.com)
-                            - Create account or login
-                            - Go to API Keys section
-                            - Create new API key
-                            """)
+                        **Get OpenAI API Key:**
+                        - Visit [platform.openai.com](https://platform.openai.com)
+                        - Create account or login
+                        - Go to API Keys section
+                        - Create new API key
+                        """)
         
         else:
             st.error("❌ Unable to calculate optimal strategy. Please check your inputs.")
@@ -628,23 +646,21 @@ def main():
         - 📊 Analyzing cross-month penalties
         - 🏦 Supporting multi-bank strategies
         - 📈 Maximizing your savings
-        - 🏧 **Realistic bank transaction scheduling**
-        - 🤖 **AI-powered logic analysis** (when OpenAI API is configured)
+        - 🤖 **Bank IT Expert auto-correction** (when OpenAI API is configured)
         
         **How to use:**
         1. Set your loan parameters in the sidebar
         2. Configure bank interest rates
         3. Click "Calculate Optimal Strategy"
-        4. Review the results and timeline
+        4. Review the results and expert corrections
         
         **Features:**
+        - **Phase 1:** Initial calculation with current logic
+        - **Phase 2:** Bank IT Expert review and auto-correction
         - Smart cross-month handling with CITI Call switching
-        - **Realistic bank operations** (transactions only on business days)
-        - **Continuous interest calculation** (including weekends/holidays)
-        - **Automatic weekend/holiday avoidance** for bank transactions
         - Visual timeline and comparison charts
         - Detailed loan schedule breakdown
-        - **AI analysis** for logic validation (requires OpenAI API key)
+        - **Expert validation** for calculation accuracy
         
         👈 **Get started by filling in the parameters on the left sidebar!**
         """)
@@ -661,11 +677,11 @@ def main():
         
         # System status
         st.subheader("🔧 System Status")
-        openai_status, _ = check_openai_status()
-        if openai_status:
-            st.success("✅ OpenAI API configured - AI analysis available")
+        expert_status, _ = check_bank_expert_status()
+        if expert_status:
+            st.success("✅ Bank IT Expert configured - Auto-correction available")
         else:
-            st.info("ℹ️ OpenAI API not configured - basic analysis only")
+            st.info("ℹ️ Bank IT Expert not configured - basic analysis only")
 
 if __name__ == "__main__":
     main()

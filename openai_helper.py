@@ -2,17 +2,19 @@ import openai
 import os
 import json
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
-class OpenAILogicHelper:
+class OpenAIBankExpert:
     def __init__(self):
         """
-        Initialize OpenAI helper for loan calculation logic
+        Initialize OpenAI Bank IT Expert for loan calculation auto-correction
         Automatically reads API key from environment variables
         """
         api_key = os.getenv('OPENAI_API_KEY')
         if api_key:
-            openai.api_key = api_key
+            # ✅ FIXED: Use new OpenAI client format (v1.0+)
+            from openai import OpenAI
+            self.client = OpenAI(api_key=api_key)
             self.api_available = True
         else:
             self.api_available = False
@@ -21,25 +23,20 @@ class OpenAILogicHelper:
         """Check if OpenAI API is available"""
         return self.api_available
     
-    def analyze_cross_month_logic(self, segments: List[Dict], month_end: str, 
-                                cross_month_rate: float, standard_rate: float) -> Dict[str, Any]:
+    def auto_correct_strategy(self, segments: List[Dict], month_end: str, 
+                            cross_month_rate: float, standard_rate: float,
+                            principal: float) -> Tuple[bool, List[Dict], str]:
         """
-        Use OpenAI to analyze cross-month segments and suggest fixes
+        Auto-correct loan strategy using Bank IT Expert logic
         
-        Args:
-            segments: List of segment dictionaries
-            month_end: Month end date string
-            cross_month_rate: Cross-month penalty rate
-            standard_rate: Standard rate
-            
         Returns:
-            Analysis and recommendations from OpenAI
+            (corrected: bool, corrected_segments: List[Dict], explanation: str)
         """
         
         if not self.api_available:
-            return {"error": "OpenAI API key not found in environment variables. Please set OPENAI_API_KEY in Render secrets."}
+            return False, segments, "OpenAI API not available"
         
-        # Prepare segment data for analysis
+        # Prepare segment data for expert analysis
         segment_data = []
         for i, seg in enumerate(segments):
             segment_data.append({
@@ -49,202 +46,245 @@ class OpenAILogicHelper:
                 "end_date": seg.get("end_date", ""),
                 "rate": seg.get("rate", 0),
                 "days": seg.get("days", 0),
-                "crosses_month": seg.get("crosses_month", False)
+                "crosses_month": seg.get("crosses_month", False),
+                "interest": seg.get("interest", 0)
             })
         
-        prompt = f"""
-You are an expert financial analyst specializing in loan calculations. 
+        # Bank IT Expert Prompt
+        expert_prompt = f"""
+You are a SENIOR BANK IT EXPERT with 20+ years experience in treasury systems and loan optimization.
 
-PROBLEM: I have a loan calculation system that should avoid cross-month penalties, but it's not working correctly.
-
-RULES:
+CRITICAL BUSINESS RULES:
 1. Month-end date: {month_end}
-2. Standard rate: {standard_rate}%
-3. Cross-month penalty rate: {cross_month_rate}%
-4. ANY segment that starts before or on month-end but ends AFTER month-end should use the penalty rate
-5. Better to use CITI Call (7.75%) than pay the penalty ({cross_month_rate}%)
+2. Cross-month penalty: {cross_month_rate}% (EXTREMELY EXPENSIVE)
+3. Standard SCBT rate: {standard_rate}%
+4. CITI Call rate: 7.75% (ALWAYS cheaper than {cross_month_rate}%)
+5. Principal: {principal:,.0f} IDR
 
-CURRENT SEGMENTS:
+EXPERT ANALYSIS REQUIRED:
+ANY segment that starts ≤ month-end but ends > month-end MUST use penalty rate OR switch to CITI Call.
+
+CURRENT SEGMENTS (SUSPICIOUS):
 {json.dumps(segment_data, indent=2)}
 
-ANALYSIS NEEDED:
-1. Identify which segments incorrectly cross month-end with wrong rates
-2. Explain WHY each problematic segment is wrong
-3. Suggest specific fixes for each segment
-4. Provide corrected segment structure
+BANK IT EXPERT TASKS:
+1. IDENTIFY segments incorrectly using standard rate when crossing month-end
+2. CALCULATE exact cost impact of each error
+3. AUTO-CORRECT with optimal bank switching strategy
+4. PROVIDE corrected segment structure ready for implementation
 
-Please provide a detailed analysis in JSON format with:
-- "problematic_segments": List of segment indices with issues
-- "analysis": Detailed explanation of each problem
-- "recommendations": Specific fixes for each segment
-- "corrected_segments": Corrected segment structure
+CORRECTION RULES:
+- If segment crosses month-end with standard rate → SWITCH to CITI Call
+- If CITI Call is unavailable → Use penalty rate
+- Maintain exact same dates and days
+- Recalculate interest with correct rates
 
-Be very specific about dates and rates. A segment from 2025-05-31 to 2025-06-01 CROSSES month-end and should NOT use the standard rate.
+OUTPUT FORMAT (JSON only):
+{{
+  "has_errors": true/false,
+  "errors_found": ["description of each error"],
+  "cost_impact": "total cost of errors in IDR",
+  "corrected_segments": [
+    {{
+      "index": 0,
+      "bank": "corrected bank name",
+      "start_date": "YYYY-MM-DD",
+      "end_date": "YYYY-MM-DD", 
+      "rate": corrected_rate,
+      "days": days,
+      "crosses_month": true/false,
+      "interest": recalculated_interest,
+      "correction_reason": "why this was changed"
+    }}
+  ],
+  "total_savings": "savings from corrections in IDR",
+  "expert_summary": "1-2 sentence summary of what was wrong and how it was fixed"
+}}
+
+THINK LIKE A BANK IT EXPERT: Cost errors of millions of IDR are UNACCEPTABLE in production systems.
 """
 
         try:
-            response = openai.ChatCompletion.create(
+            response = self.client.chat.completions.create(
                 model="gpt-4",
                 messages=[
-                    {"role": "system", "content": "You are a financial calculation expert who identifies logic errors in loan calculations."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.1,
-                max_tokens=2000
-            )
-            
-            content = response.choices[0].message.content
-            
-            # Try to parse JSON response
-            try:
-                analysis = json.loads(content)
-                return analysis
-            except json.JSONDecodeError:
-                # If not JSON, return as text analysis
-                return {"analysis": content, "is_json": False}
-                
-        except Exception as e:
-            return {"error": f"OpenAI API call failed: {str(e)}"}
-    
-    def generate_corrected_logic(self, current_logic: str, error_description: str) -> str:
-        """
-        Use OpenAI to generate corrected Python logic
-        
-        Args:
-            current_logic: Current Python code that has bugs
-            error_description: Description of what's wrong
-            
-        Returns:
-            Corrected Python code
-        """
-        
-        if not self.api_available:
-            return "# OpenAI API key not found in environment variables"
-        
-        prompt = f"""
-You are a Python expert specializing in financial calculations.
-
-PROBLEM: The following Python code has a bug in cross-month penalty logic:
-
-ERROR DESCRIPTION:
-{error_description}
-
-CURRENT CODE:
-```python
-{current_logic}
-```
-
-REQUIREMENTS:
-1. Fix the cross-month detection logic
-2. Ensure segments crossing month-end use penalty rate or switch to CITI Call
-3. Gap segments should also be checked for cross-month
-4. Add proper validation and logging
-5. Keep the existing structure but fix the bugs
-
-Please provide ONLY the corrected Python code (no explanations).
-"""
-
-        try:
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are a Python expert who fixes financial calculation bugs."},
-                    {"role": "user", "content": prompt}
+                    {"role": "system", "content": "You are a senior bank IT expert specializing in treasury loan systems. You identify and auto-correct calculation errors that could cost millions in penalties."},
+                    {"role": "user", "content": expert_prompt}
                 ],
                 temperature=0.1,
                 max_tokens=3000
             )
             
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            
+            # Parse JSON response
+            try:
+                analysis = json.loads(content)
+                
+                if analysis.get("has_errors", False):
+                    return True, analysis.get("corrected_segments", segments), analysis.get("expert_summary", "Corrections applied")
+                else:
+                    return False, segments, "No errors found by Bank IT Expert"
+                    
+            except json.JSONDecodeError:
+                return False, segments, f"Expert analysis available but not in correct format: {content}"
+                
+        except Exception as e:
+            return False, segments, f"Bank IT Expert analysis failed: {str(e)}"
+    
+    def validate_cross_month_logic(self, segments: List[Dict], month_end: str) -> Dict[str, Any]:
+        """
+        Validate cross-month logic with Bank IT Expert precision
+        """
+        
+        if not self.api_available:
+            return {"error": "Bank IT Expert not available"}
+        
+        validation_prompt = f"""
+You are a BANK IT EXPERT validating loan calculation logic.
+
+MONTH-END: {month_end}
+SEGMENTS TO VALIDATE:
+{json.dumps(segments, indent=2)}
+
+VALIDATION CHECKLIST:
+1. Any segment crossing month-end using correct penalty rate?
+2. Any missed opportunities to use CITI Call instead of penalty?
+3. Date logic correctness (start ≤ month-end, end > month-end = crossing)
+4. Interest calculations accuracy
+
+RESPOND WITH JSON:
+{{
+  "is_valid": true/false,
+  "critical_errors": ["list of critical errors"],
+  "warnings": ["list of warnings"],
+  "validation_score": "percentage 0-100",
+  "expert_recommendation": "what should be done"
+}}
+"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are a bank IT expert performing critical validation of loan calculations."},
+                    {"role": "user", "content": validation_prompt}
+                ],
+                temperature=0.1,
+                max_tokens=1500
+            )
+            
+            content = response.choices[0].message.content
+            return json.loads(content)
             
         except Exception as e:
-            return f"# OpenAI API call failed: {str(e)}"
+            return {"error": f"Validation failed: {str(e)}"}
 
-def analyze_loan_segments_with_ai(segments, month_end_str):
+def apply_ai_corrections(original_segments, principal: float, month_end_str: str):
     """
-    Helper function to analyze loan segments using OpenAI
+    Apply AI corrections to loan segments automatically
     
     Args:
-        segments: List of LoanSegment objects
-        month_end_str: Month end date as string
+        original_segments: List of LoanSegment objects
+        principal: Loan principal amount
+        month_end_str: Month end date string
         
     Returns:
-        Analysis results
+        (corrected: bool, corrected_segments: List[LoanSegment], explanation: str)
     """
     
-    helper = OpenAILogicHelper()
+    expert = OpenAIBankExpert()
     
-    if not helper.is_available():
-        return {
-            "error": "OpenAI API not available", 
-            "message": "Set OPENAI_API_KEY in Render environment variables to enable AI analysis"
-        }
+    if not expert.is_available():
+        return False, original_segments, "Bank IT Expert not available - using original calculation"
     
-    # Convert segments to dict format
+    # Convert segments to dict format for AI analysis
     segment_dicts = []
-    for seg in segments:
+    for seg in original_segments:
         segment_dicts.append({
             "bank": seg.bank,
             "start_date": seg.start_date.strftime('%Y-%m-%d'),
             "end_date": seg.end_date.strftime('%Y-%m-%d'),
             "rate": seg.rate,
             "days": seg.days,
-            "crosses_month": seg.crosses_month
+            "crosses_month": seg.crosses_month,
+            "interest": seg.interest
         })
     
-    return helper.analyze_cross_month_logic(
+    # Get AI corrections
+    corrected, corrected_data, explanation = expert.auto_correct_strategy(
         segment_dicts, 
         month_end_str, 
         cross_month_rate=9.20, 
-        standard_rate=6.20
+        standard_rate=6.20,
+        principal=principal
     )
+    
+    if not corrected:
+        return False, original_segments, explanation
+    
+    # Convert corrected data back to LoanSegment objects
+    try:
+        from loan_calculator import LoanSegment
+        
+        corrected_segments = []
+        for seg_data in corrected_data:
+            corrected_segments.append(LoanSegment(
+                bank=seg_data["bank"],
+                bank_class=seg_data.get("bank_class", "corrected"),
+                rate=seg_data["rate"],
+                days=seg_data["days"],
+                start_date=datetime.strptime(seg_data["start_date"], '%Y-%m-%d'),
+                end_date=datetime.strptime(seg_data["end_date"], '%Y-%m-%d'),
+                interest=seg_data["interest"],
+                crosses_month=seg_data["crosses_month"]
+            ))
+        
+        return True, corrected_segments, explanation
+        
+    except Exception as e:
+        return False, original_segments, f"Failed to apply corrections: {str(e)}"
 
-# Check if OpenAI is available on import
 def check_openai_availability():
     """Check if OpenAI API is properly configured"""
-    helper = OpenAILogicHelper()
-    return helper.is_available()
+    expert = OpenAIBankExpert()
+    return expert.is_available()
 
-# Example usage
+# Example usage and testing
 if __name__ == "__main__":
-    # Test the OpenAI helper
-    helper = OpenAILogicHelper()
+    expert = OpenAIBankExpert()
     
-    if not helper.is_available():
+    if not expert.is_available():
         print("❌ OpenAI API key not found in environment variables")
-        print("💡 Set OPENAI_API_KEY in your environment to enable AI analysis")
+        print("💡 Set OPENAI_API_KEY in your environment to enable Bank IT Expert")
         exit(1)
     
-    print("✅ OpenAI API available")
+    print("✅ Bank IT Expert available")
     
-    # Example problematic segments
+    # Test problematic segments (crossing month-end with wrong rate)
     test_segments = [
         {
             "index": 0,
             "bank": "SCBT 1w",
-            "start_date": "2025-05-22",
-            "end_date": "2025-05-28", 
-            "rate": 6.20,
+            "start_date": "2025-05-30",
+            "end_date": "2025-06-05", 
+            "rate": 6.20,  # ❌ WRONG - should be 9.20% or CITI Call
             "days": 7,
-            "crosses_month": False
-        },
-        {
-            "index": 1,
-            "bank": "SCBT 1w (Gap)",
-            "start_date": "2025-05-31",
-            "end_date": "2025-06-01",
-            "rate": 6.20,  # This is WRONG - should be 9.20% or CITI Call
-            "days": 2,
-            "crosses_month": True  # This segment crosses month-end!
+            "crosses_month": True,  # This segment crosses month-end!
+            "interest": 3500000  # Calculated with wrong rate
         }
     ]
     
-    analysis = helper.analyze_cross_month_logic(
+    corrected, corrected_segments, explanation = expert.auto_correct_strategy(
         test_segments, 
         "2025-05-31", 
         cross_month_rate=9.20, 
-        standard_rate=6.20
+        standard_rate=6.20,
+        principal=38_000_000_000
     )
     
-    print("OpenAI Analysis:")
-    print(json.dumps(analysis, indent=2))
+    print(f"Correction applied: {corrected}")
+    print(f"Explanation: {explanation}")
+    if corrected:
+        print("Corrected segments:")
+        print(json.dumps(corrected_segments, indent=2))
