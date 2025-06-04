@@ -370,7 +370,8 @@ def main():
             max_value=90,
             value=30,
             step=1,
-            help="Enter the total number of days for the loan"
+            help="Enter the total number of days for the loan",
+            key="total_days_input"  # Avoid duplicate
         )
         
         # Dates
@@ -382,11 +383,35 @@ def main():
                 help="Loan start date"
             )
         with col2:
-            month_end = st.date_input(
-                "Month End",
-                value=datetime(2025, 5, 31),
-                help="Month end date for penalty calculation"
+            total_days = st.number_input(
+                "Loan Period (days)",
+                min_value=1,
+                max_value=90,
+                value=30,
+                step=1,
+                help="Enter the total number of days for the loan"
             )
+        
+        # Auto-calculate month-end
+        if start_date and total_days:
+            loan_end_date = start_date + timedelta(days=total_days - 1)
+            
+            # Show calculated loan period
+            st.info(f"📅 **Loan Period:** {start_date.strftime('%Y-%m-%d')} → {loan_end_date.strftime('%Y-%m-%d')}")
+            
+            # Auto-detect month-ends
+            calculator_preview = RealBankingCalculator()
+            month_ends = calculator_preview.get_month_end_dates(
+                datetime.combine(start_date, datetime.min.time()),
+                datetime.combine(loan_end_date, datetime.min.time())
+            )
+            
+            if month_ends:
+                month_end_strs = [me.strftime('%Y-%m-%d (%b)') for me in month_ends]
+                st.warning(f"🚨 **Month-end crossings detected:** {', '.join(month_end_strs)}")
+                st.write("💡 System will automatically apply month-end penalties and tactical switching")
+            else:
+                st.success("✅ **No month-end crossings** - standard rates will be used throughout")
         
         st.header("🏛️ Banking Rate Structure")
         
@@ -479,12 +504,22 @@ def main():
             st.error("❌ Principal amount must be greater than 0")
             st.stop()
         
-        # Convert dates to datetime
+        # Convert dates to datetime - auto-detect month-end
         start_datetime = datetime.combine(start_date, datetime.min.time())
-        month_end_datetime = datetime.combine(month_end, datetime.min.time())
+        loan_end_datetime = start_datetime + timedelta(days=total_days - 1)
         
-        # Display banking calendar first
-        display_banking_calendar(start_datetime, start_datetime + timedelta(days=total_days), month_end_datetime)
+        # Auto-detect month-ends in loan period
+        calculator_temp = RealBankingCalculator()
+        detected_month_ends = calculator_temp.get_month_end_dates(start_datetime, loan_end_datetime)
+        
+        # Use first detected month-end, or create a dummy far future date if none
+        month_end_datetime = detected_month_ends[0] if detected_month_ends else datetime(2099, 12, 31)
+        
+        # Display banking calendar first - auto-detected month-ends
+        if detected_month_ends:
+            display_banking_calendar(start_datetime, loan_end_datetime, detected_month_ends[0])
+        else:
+            st.info("📅 **No month-end crossings detected** - loan stays within single month")
         
         # Prepare data
         bank_rates = {
@@ -557,7 +592,10 @@ def main():
                 with st.expander("🔍 Real Banking Expert Analysis"):
                     st.markdown('<div class="business-day-info">', unsafe_allow_html=True)
                     st.write(f"**Analyzing for real banking violations:**")
-                    st.write(f"Month-end: {month_end.strftime('%Y-%m-%d')}")
+                    if detected_month_ends:
+                        st.write(f"Auto-detected month-ends: {[me.strftime('%Y-%m-%d') for me in detected_month_ends]}")
+                    else:
+                        st.write("No month-end crossings detected")
                     st.write(f"Principal: {principal:,}")
                     
                     # Check for real banking issues
@@ -579,14 +617,16 @@ def main():
                         st.write("✅ **No issues detected - structure follows real banking practices**")
                     st.markdown('</div>', unsafe_allow_html=True)
                 
-                # Apply Real Banking Expert corrections
-                corrected, corrected_segments, correction_explanation = apply_real_banking_corrections(
-                    best_strategy.segments, 
-                    principal,
-                    month_end.strftime('%Y-%m-%d'),
-                    cross_month_rate,
-                    scbt_1w_rate
-                )
+                # Real Banking Expert corrections - use auto-detected month-end
+                primary_month_end = detected_month_ends[0] if detected_month_ends else None
+                if primary_month_end:
+                    corrected, corrected_segments, correction_explanation = apply_real_banking_corrections(
+                        best_strategy.segments, 
+                        principal,
+                        primary_month_end.strftime('%Y-%m-%d'),
+                        cross_month_rate,
+                        scbt_1w_rate
+                    )
                 
                 # Expert Response Display
                 with st.expander("🔍 Real Banking Expert Response"):
@@ -1041,28 +1081,37 @@ def main():
             st.metric("Loan Period", "30 days")
         with col2:
             st.metric("Start Date", "2025-05-25")
-            st.metric("Month End", "2025-05-31")
+            st.metric("Auto-Detected Month-End", "System calculated")
         
         # Banking reality preview
         st.subheader("🏦 Banking Reality Preview")
         preview_start = datetime(2025, 5, 25)
-        preview_month_end = datetime(2025, 5, 31)
+        preview_end = preview_start + timedelta(days=30-1)
         
-        st.markdown('<div class="banking-reality">', unsafe_allow_html=True)
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.write("**May 30 (Friday)**")
-            st.write("🏦 Last business day")
-            st.write("⚠️ Must switch before close")
-        with col2:
-            st.write("**May 31 (Saturday)**") 
-            st.write("🏖️ Weekend + Month-end")
-            st.write("❌ Banks closed")
-        with col3:
-            st.write("**June 2 (Monday)**")
-            st.write("🏦 First business day")
-            st.write("✅ Can resume operations")
-        st.markdown('</div>', unsafe_allow_html=True)
+        # Auto-detect preview month-end
+        preview_calc = RealBankingCalculator()
+        preview_month_ends = preview_calc.get_month_end_dates(preview_start, preview_end)
+        
+        if preview_month_ends:
+            preview_month_end = preview_month_ends[0]
+            st.markdown('<div class="banking-reality">', unsafe_allow_html=True)
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.write("**Example: May 30 (Friday)**")
+                st.write("🏦 Last business day")
+                st.write("⚠️ Must switch before close")
+            with col2:
+                st.write(f"**{preview_month_end.strftime('%b %d (%A)')}**") 
+                st.write("🏖️ Month-end detected")
+                st.write("❌ Banks may be closed")
+            with col3:
+                next_biz = preview_calc.get_first_business_day_after(preview_month_end)
+                st.write(f"**{next_biz.strftime('%b %d (%A)')}**")
+                st.write("🏦 First business day")
+                st.write("✅ Can resume operations")
+            st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            st.success("✅ Example loan stays within single month - no month-end concerns")
         
         # System status
         st.subheader("🔧 System Status")

@@ -277,7 +277,12 @@ class RealBankingCalculator:
         if not all_month_ends:
             self.log_message(f"Loan period doesn't cross any month-end - using standard rates", "INFO")
             # Create simple segments without month-end concerns
-            return self._create_simple_segments(start_date, total_days, segment_size, bank_name, bank_class, standard_rate, principal)
+            simple_segments = self._create_simple_segments(start_date, total_days, segment_size, bank_name, bank_class, standard_rate, principal)
+            if simple_segments:
+                self.log_message(f"✅ Created {len(simple_segments)} simple segments", "DEBUG")
+            else:
+                self.log_message(f"❌ Failed to create simple segments", "ERROR")
+            return simple_segments
         
         # Use the first month-end for banking calendar calculations
         primary_month_end = all_month_ends[0]
@@ -451,27 +456,46 @@ class RealBankingCalculator:
         remaining_days = total_days
         current_date = start_date
         
-        while remaining_days > 0:
+        self.log_message(f"Creating simple segments: {total_days} days, segment_size: {segment_size}", "DEBUG")
+        
+        iteration_count = 0
+        max_iterations = (total_days // segment_size) + 2  # Safety limit
+        
+        while remaining_days > 0 and iteration_count < max_iterations:
+            iteration_count += 1
             segment_days = min(segment_size, remaining_days)
             end_date = current_date + timedelta(days=segment_days - 1)
             
-            segment = LoanSegment(
-                bank=bank_name,
-                bank_class=bank_class,
-                rate=standard_rate,
-                days=segment_days,
-                start_date=current_date,
-                end_date=end_date,
-                interest=self.calculate_interest(principal, standard_rate, segment_days),
-                crosses_month=False
-            )
-            segment.banking_logic = "Standard segment - no month-end concerns"
-            segment.compliance_status = "FULLY_COMPLIANT"
-            segments.append(segment)
+            # Validate segment
+            if segment_days <= 0:
+                self.log_message(f"Invalid segment days: {segment_days}, breaking", "ERROR")
+                break
             
-            remaining_days -= segment_days
-            current_date = end_date + timedelta(days=1)
+            try:
+                segment = LoanSegment(
+                    bank=bank_name,
+                    bank_class=bank_class,
+                    rate=standard_rate,
+                    days=segment_days,
+                    start_date=current_date,
+                    end_date=end_date,
+                    interest=self.calculate_interest(principal, standard_rate, segment_days),
+                    crosses_month=False
+                )
+                segment.banking_logic = "Standard segment - no month-end concerns"
+                segment.compliance_status = "FULLY_COMPLIANT"
+                segments.append(segment)
+                
+                self.log_message(f"✅ Simple segment {len(segments)}: {segment_days} days @ {standard_rate}%", "DEBUG")
+                
+                remaining_days -= segment_days
+                current_date = end_date + timedelta(days=1)
+                
+            except Exception as e:
+                self.log_message(f"Error creating simple segment: {e}", "ERROR")
+                break
         
+        self.log_message(f"Simple segments created: {len(segments)} segments for {total_days - remaining_days} days", "DEBUG")
         return segments
     
     def calculate_optimal_strategy(self, principal: float, total_days: int, start_date: datetime,
@@ -531,33 +555,79 @@ class RealBankingCalculator:
             
             # Real Banking optimized strategies
             if total_days > 0:
+                # Debug logging
+                self.log_message(f"Creating Real Banking strategies for {total_days} days", "DEBUG")
+                
                 # SCBT 1-week Real Banking
-                scbt_1w_segments = self.create_real_banking_segments(
-                    start_date, total_days, month_end, 7, 'SCBT 1w', 'scbt',
-                    bank_rates.get('scbt_1w', 6.20), bank_rates.get('general_cross_month', 9.20), 
-                    principal, 'SCBT 1w Real Banking'
-                )
-                if scbt_1w_segments:
-                    strategies.append(LoanStrategy('SCBT 1w Real Banking', scbt_1w_segments, is_optimized=True))
+                try:
+                    scbt_1w_segments = self.create_real_banking_segments(
+                        start_date, total_days, month_end, 7, 'SCBT 1w', 'scbt',
+                        bank_rates.get('scbt_1w', 6.20), bank_rates.get('general_cross_month', 9.20), 
+                        principal, 'SCBT 1w Real Banking'
+                    )
+                    if scbt_1w_segments:
+                        scbt_1w_strategy = LoanStrategy('SCBT 1w Real Banking', scbt_1w_segments, is_optimized=True)
+                        strategies.append(scbt_1w_strategy)
+                        self.log_message(f"✅ SCBT 1w strategy created: {len(scbt_1w_segments)} segments, cost: {scbt_1w_strategy.total_interest:,.0f}", "DEBUG")
+                    else:
+                        self.log_message(f"❌ SCBT 1w strategy failed: no segments created", "ERROR")
+                except Exception as e:
+                    self.log_message(f"❌ SCBT 1w strategy error: {e}", "ERROR")
                 
                 # SCBT 2-week Real Banking
-                scbt_2w_segments = self.create_real_banking_segments(
-                    start_date, total_days, month_end, 14, 'SCBT 2w', 'scbt',
-                    bank_rates.get('scbt_2w', 6.60), bank_rates.get('general_cross_month', 9.20), 
-                    principal, 'SCBT 2w Real Banking'
-                )
-                if scbt_2w_segments:
-                    strategies.append(LoanStrategy('SCBT 2w Real Banking', scbt_2w_segments, is_optimized=True))
+                try:
+                    scbt_2w_segments = self.create_real_banking_segments(
+                        start_date, total_days, month_end, 14, 'SCBT 2w', 'scbt',
+                        bank_rates.get('scbt_2w', 6.60), bank_rates.get('general_cross_month', 9.20), 
+                        principal, 'SCBT 2w Real Banking'
+                    )
+                    if scbt_2w_segments:
+                        scbt_2w_strategy = LoanStrategy('SCBT 2w Real Banking', scbt_2w_segments, is_optimized=True)
+                        strategies.append(scbt_2w_strategy)
+                        self.log_message(f"✅ SCBT 2w strategy created: {len(scbt_2w_segments)} segments, cost: {scbt_2w_strategy.total_interest:,.0f}", "DEBUG")
+                    else:
+                        self.log_message(f"❌ SCBT 2w strategy failed: no segments created", "ERROR")
+                except Exception as e:
+                    self.log_message(f"❌ SCBT 2w strategy error: {e}", "ERROR")
                 
                 # CIMB Real Banking (if included)
                 if include_banks.get('CIMB', False):
-                    cimb_segments = self.create_real_banking_segments(
-                        start_date, total_days, month_end, 30, 'CIMB 1M', 'cimb',
-                        bank_rates.get('cimb', 7.00), bank_rates.get('general_cross_month', 9.20), 
-                        principal, 'CIMB Real Banking'
-                    )
-                    if cimb_segments:
-                        strategies.append(LoanStrategy('CIMB Real Banking', cimb_segments, is_optimized=True))
+                    try:
+                        cimb_segments = self.create_real_banking_segments(
+                            start_date, total_days, month_end, 30, 'CIMB 1M', 'cimb',
+                            bank_rates.get('cimb', 7.00), bank_rates.get('general_cross_month', 9.20), 
+                            principal, 'CIMB Real Banking'
+                        )
+                        if cimb_segments:
+                            cimb_strategy = LoanStrategy('CIMB Real Banking', cimb_segments, is_optimized=True)
+                            strategies.append(cimb_strategy)
+                            self.log_message(f"✅ CIMB strategy created: {len(cimb_segments)} segments, cost: {cimb_strategy.total_interest:,.0f}", "DEBUG")
+                        else:
+                            self.log_message(f"❌ CIMB strategy failed: no segments created", "ERROR")
+                    except Exception as e:
+                        self.log_message(f"❌ CIMB strategy error: {e}", "ERROR")
+                
+                # Permata Real Banking (if included)
+                if include_banks.get('Permata', False):
+                    try:
+                        permata_segments = self.create_real_banking_segments(
+                            start_date, total_days, month_end, 30, 'Permata 1M', 'permata',
+                            bank_rates.get('permata', 7.00), bank_rates.get('general_cross_month', 9.20), 
+                            principal, 'Permata Real Banking'
+                        )
+                        if permata_segments:
+                            permata_strategy = LoanStrategy('Permata Real Banking', permata_segments, is_optimized=True)
+                            strategies.append(permata_strategy)
+                            self.log_message(f"✅ Permata strategy created: {len(permata_segments)} segments, cost: {permata_strategy.total_interest:,.0f}", "DEBUG")
+                        else:
+                            self.log_message(f"❌ Permata strategy failed: no segments created", "ERROR")
+                    except Exception as e:
+                        self.log_message(f"❌ Permata strategy error: {e}", "ERROR")
+            
+            # Debug: Log all strategies created
+            self.log_message(f"📊 Total strategies created: {len(strategies)}", "DEBUG")
+            for i, strategy in enumerate(strategies):
+                self.log_message(f"Strategy {i}: {strategy.name} - Valid: {strategy.is_valid}, Cost: {strategy.total_interest:,.0f}", "DEBUG")
             
             # Sort by total cost - prioritize compliant strategies but don't exclude operational issues
             valid_strategies = [s for s in strategies if s.is_valid and s.total_interest != float('inf')]
