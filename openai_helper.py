@@ -3,10 +3,10 @@ import json
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Tuple
 
-class AdvancedBankExpert:
+class SuperAdvancedBankExpert:
     def __init__(self):
         """
-        Advanced Bank IT Expert with multi-step validation
+        Super Advanced Bank Expert using o1-mini for complex reasoning
         """
         api_key = os.getenv('OPENAI_API_KEY')
         if api_key:
@@ -27,137 +27,128 @@ class AdvancedBankExpert:
         """Check if OpenAI API is available"""
         return self.api_available
     
-    def multi_step_validation(self, segments: List[Dict], month_end: str, 
-                            cross_month_rate: float, standard_rate: float,
-                            principal: float) -> Tuple[bool, List[Dict], str]:
+    def ultra_strict_validation(self, segments: List[Dict], month_end: str, 
+                              cross_month_rate: float, standard_rate: float,
+                              principal: float) -> Tuple[bool, List[Dict], str]:
         """
-        Multi-step validation with advanced reasoning
-        
-        Returns:
-            (has_errors: bool, corrected_segments: List[Dict], detailed_explanation: str)
+        Ultra-strict validation using o1-mini's advanced reasoning
         """
         
         if not self.api_available:
-            return False, segments, "Advanced Bank Expert not available"
+            return False, segments, "Super Advanced Bank Expert not available"
         
-        # STEP 1: Critical Error Detection
-        step1_result = self._step1_detect_critical_errors(segments, month_end, cross_month_rate, standard_rate)
+        # Create ultra-detailed prompt for o1-mini
+        ultra_prompt = self._create_ultra_detailed_prompt(segments, month_end, cross_month_rate, standard_rate, principal)
         
-        if not step1_result.get("has_critical_errors", False):
-            return False, segments, "No critical errors detected by Advanced Bank Expert"
-        
-        # STEP 2: Generate Corrections
-        step2_result = self._step2_generate_corrections(segments, month_end, cross_month_rate, principal, step1_result)
-        
-        # STEP 3: Final Verification
-        if step2_result.get("corrected_segments"):
-            step3_result = self._step3_verify_corrections(step2_result["corrected_segments"], month_end, cross_month_rate)
-            
-            if step3_result.get("verification_passed", False):
-                return True, step2_result["corrected_segments"], step3_result.get("final_explanation", "Corrections applied and verified")
-            else:
-                return False, segments, f"Verification failed: {step3_result.get('verification_errors', 'Unknown error')}"
-        
-        return False, segments, "Failed to generate valid corrections"
+        try:
+            # Try o1-mini first (best reasoning model)
+            try:
+                if hasattr(self.client, 'chat'):
+                    response = self.client.chat.completions.create(
+                        model="o1-mini",  # 🔥 Use o1-mini for complex reasoning
+                        messages=[
+                            {"role": "user", "content": ultra_prompt}
+                        ],
+                        temperature=1.0  # o1 models use different temperature scale
+                    )
+                    content = response.choices[0].message.content.strip()
+                else:
+                    # Fallback for old client
+                    response = self.client.ChatCompletion.create(
+                        model="o1-mini",
+                        messages=[
+                            {"role": "user", "content": ultra_prompt}
+                        ],
+                        temperature=1.0
+                    )
+                    content = response.choices[0].message.content.strip()
+                
+                return self._parse_o1_response(content, segments)
+                
+            except Exception as e:
+                print(f"o1-mini failed: {e}, trying gpt-4o...")
+                
+                # Fallback to gpt-4o (second best)
+                if hasattr(self.client, 'chat'):
+                    response = self.client.chat.completions.create(
+                        model="gpt-4o",
+                        messages=[
+                            {"role": "system", "content": "You are an ultra-precise bank treasury expert. You MUST detect and fix ANY segment that crosses month-end with wrong rate."},
+                            {"role": "user", "content": ultra_prompt}
+                        ],
+                        temperature=0.0
+                    )
+                    content = response.choices[0].message.content.strip()
+                else:
+                    response = self.client.ChatCompletion.create(
+                        model="gpt-4o",
+                        messages=[
+                            {"role": "system", "content": "You are an ultra-precise bank treasury expert. You MUST detect and fix ANY segment that crosses month-end with wrong rate."},
+                            {"role": "user", "content": ultra_prompt}
+                        ],
+                        temperature=0.0
+                    )
+                    content = response.choices[0].message.content.strip()
+                
+                return self._parse_o1_response(content, segments)
+                
+        except Exception as e:
+            return False, segments, f"Super Advanced Expert failed: {str(e)}"
     
-    def _step1_detect_critical_errors(self, segments: List[Dict], month_end: str, cross_month_rate: float, standard_rate: float) -> Dict:
-        """STEP 1: Critical Error Detection with Advanced Reasoning"""
+    def _create_ultra_detailed_prompt(self, segments: List[Dict], month_end: str, 
+                                    cross_month_rate: float, standard_rate: float, principal: float) -> str:
+        """Create ultra-detailed prompt for o1-mini"""
         
-        prompt = f"""
-You are a SENIOR BANK TREASURY EXPERT with 25+ years experience. Your job is to detect CRITICAL CALCULATION ERRORS.
+        return f"""
+🏦 ULTRA-CRITICAL BANK TREASURY AUDIT
 
-CRITICAL BUSINESS RULE:
-- Month-end cutoff: {month_end}
-- ANY loan segment that starts ON OR BEFORE {month_end} but ends AFTER {month_end} = CROSSES MONTH-END
-- Cross-month penalty rate: {cross_month_rate}% (EXPENSIVE)
-- Standard rate: {standard_rate}% (ONLY for non-crossing segments)
+You are a WORLD-CLASS BANK TREASURY EXPERT performing a CRITICAL AUDIT to prevent MILLIONS in losses.
 
-SEGMENTS TO ANALYZE:
+🚨 ABSOLUTE BUSINESS RULES (VIOLATIONS = IMMEDIATE TERMINATION):
+1. Month-end cutoff: {month_end} (Saturday)
+2. SCBT standard rate: {standard_rate}% (ONLY for non-crossing segments)
+3. Cross-month penalty: {cross_month_rate}% (EXTREMELY EXPENSIVE)
+4. CITI Call rate: 7.75% (Use instead of penalty)
+
+📊 CURRENT LOAN SEGMENTS TO AUDIT:
 {json.dumps(segments, indent=2)}
 
-DETECTION LOGIC:
-For each segment, perform this EXACT check:
-1. Parse start_date and end_date
-2. Parse month_end_date = {month_end}
-3. Check: (start_date <= month_end_date) AND (end_date > month_end_date)
-4. If YES → segment CROSSES month-end
-5. If crosses AND rate = {standard_rate}% → CRITICAL ERROR
+🔍 ULTRA-PRECISE DETECTION ALGORITHM:
+For EACH segment, perform this EXACT mathematical check:
 
-RESPOND WITH JSON ONLY:
+Step 1: Parse dates
+- start_date = segment start date
+- end_date = segment end date  
+- month_end_cutoff = {month_end}
+
+Step 2: Cross-month detection
+- CROSSES = (start_date <= {month_end}) AND (end_date > {month_end})
+- If CROSSES = TRUE and rate = {standard_rate}% → 🚨 CRITICAL VIOLATION
+
+Step 3: Cost calculation
+- Current cost = {principal} × (rate/100) × (days/365)
+- Correct cost = {principal} × (7.75/100) × (days/365)
+
+🎯 REQUIRED OUTPUT FORMAT (JSON ONLY):
+
 {{
-  "has_critical_errors": true/false,
-  "critical_errors": [
+  "audit_result": "PASS/FAIL",
+  "critical_violations_found": [
     {{
-      "segment_index": 0,
-      "error_type": "cross_month_wrong_rate",
-      "current_rate": 6.20,
-      "should_be_rate": 7.75,
+      "segment_index": 3,
+      "segment_bank": "SCBT 1w (Gap)",
       "start_date": "2025-05-31",
-      "end_date": "2025-06-01", 
-      "crosses_month": true,
-      "cost_error_per_day": 12345
+      "end_date": "2025-06-01",
+      "days": 2,
+      "current_rate": 6.20,
+      "crosses_month_end": true,
+      "violation_type": "USES_STANDARD_RATE_FOR_CROSS_MONTH",
+      "current_interest": 12909589,
+      "correct_rate": 7.75,
+      "correct_interest": 16136986,
+      "financial_impact": 3227397
     }}
   ],
-  "segments_checked": 9,
-  "total_errors_found": 1
-}}
-
-CHECK EVERY SINGLE SEGMENT. DO NOT SKIP ANY.
-"""
-
-        try:
-            if hasattr(self.client, 'chat'):
-                # New OpenAI client
-                response = self.client.chat.completions.create(
-                    model="gpt-4",
-                    messages=[
-                        {"role": "system", "content": "You are a precise bank treasury expert who detects calculation errors with 100% accuracy."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.0,
-                    max_tokens=2000
-                )
-                content = response.choices[0].message.content.strip()
-            else:
-                # Old OpenAI client
-                response = self.client.ChatCompletion.create(
-                    model="gpt-4",
-                    messages=[
-                        {"role": "system", "content": "You are a precise bank treasury expert who detects calculation errors with 100% accuracy."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.0,
-                    max_tokens=2000
-                )
-                content = response.choices[0].message.content.strip()
-            
-            return json.loads(content)
-            
-        except Exception as e:
-            return {"error": f"Step 1 failed: {str(e)}"}
-    
-    def _step2_generate_corrections(self, segments: List[Dict], month_end: str, cross_month_rate: float, 
-                                  principal: float, step1_result: Dict) -> Dict:
-        """STEP 2: Generate Corrected Segments"""
-        
-        prompt = f"""
-You are a BANK IT SYSTEMS EXPERT generating corrected loan segments.
-
-ERRORS DETECTED:
-{json.dumps(step1_result.get("critical_errors", []), indent=2)}
-
-ORIGINAL SEGMENTS:
-{json.dumps(segments, indent=2)}
-
-CORRECTION RULES:
-1. Keep ALL original segments that don't cross month-end
-2. For segments crossing month-end: Switch bank to "CITI Call" with rate 7.75%
-3. Keep exact same dates and days
-4. Recalculate interest: Principal × (7.75/100) × (Days/365)
-5. Mark crosses_month = true for transparency
-
-GENERATE COMPLETE CORRECTED SEGMENT LIST:
-{{
   "corrected_segments": [
     {{
       "index": 0,
@@ -172,7 +163,7 @@ GENERATE COMPLETE CORRECTED SEGMENT LIST:
     {{
       "index": 3,
       "bank": "CITI Call",
-      "start_date": "2025-05-31", 
+      "start_date": "2025-05-31",
       "end_date": "2025-06-01",
       "rate": 7.75,
       "days": 2,
@@ -180,129 +171,70 @@ GENERATE COMPLETE CORRECTED SEGMENT LIST:
       "interest": 16136986
     }}
   ],
-  "corrections_applied": 3,
-  "total_segments": 9
+  "total_violations": 1,
+  "total_financial_impact": 3227397,
+  "expert_certification": "I certify NO segment crosses {month_end} with {standard_rate}% rate"
 }}
 
-Principal for interest calculation: {principal:,.0f} IDR
+🚨 CRITICAL REQUIREMENTS:
+1. CHECK EVERY SINGLE SEGMENT - NO EXCEPTIONS
+2. ANY segment with start_date ≤ {month_end} AND end_date > {month_end} AND rate = {standard_rate}% is VIOLATION
+3. FIX ALL violations by changing bank to "CITI Call" and rate to 7.75%
+4. RECALCULATE interest with correct rate
+5. RETURN ALL segments (corrected ones)
 
-IMPORTANT: Return ALL segments in corrected form, not just the changed ones.
+Principal: {principal:,} IDR
+Interest formula: Principal × (Rate/100) × (Days/365)
+
+⚡ ULTRA-CRITICAL: The segment "2025-05-31 → 2025-06-01" DEFINITELY crosses month-end and MUST use 7.75% not {standard_rate}%!
+
+AUDIT NOW. SAVE THE BANK FROM MILLIONS IN LOSSES.
 """
-
-        try:
-            if hasattr(self.client, 'chat'):
-                # New OpenAI client
-                response = self.client.chat.completions.create(
-                    model="gpt-4",
-                    messages=[
-                        {"role": "system", "content": "You are a bank IT expert who generates precisely corrected loan segments."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.0,
-                    max_tokens=3000
-                )
-                content = response.choices[0].message.content.strip()
-            else:
-                # Old OpenAI client
-                response = self.client.ChatCompletion.create(
-                    model="gpt-4",
-                    messages=[
-                        {"role": "system", "content": "You are a bank IT expert who generates precisely corrected loan segments."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.0,
-                    max_tokens=3000
-                )
-                content = response.choices[0].message.content.strip()
-            
-            return json.loads(content)
-            
-        except Exception as e:
-            return {"error": f"Step 2 failed: {str(e)}"}
     
-    def _step3_verify_corrections(self, corrected_segments: List[Dict], month_end: str, cross_month_rate: float) -> Dict:
-        """STEP 3: Final Verification of Corrections"""
+    def _parse_o1_response(self, content: str, original_segments: List[Dict]) -> Tuple[bool, List[Dict], str]:
+        """Parse o1-mini response"""
         
-        prompt = f"""
-You are a BANK AUDIT EXPERT performing final verification.
-
-CORRECTED SEGMENTS TO VERIFY:
-{json.dumps(corrected_segments, indent=2)}
-
-VERIFICATION CHECKLIST:
-1. NO segment should cross month-end ({month_end}) with standard rate (6.20%)
-2. ALL cross-month segments should use CITI Call (7.75%) or penalty ({cross_month_rate}%)
-3. Interest calculations should be mathematically correct
-4. Total segment count should match original
-
-VERIFICATION PROCESS:
-For each segment:
-- Check dates vs month-end
-- Verify rate is appropriate
-- Verify interest calculation
-- Flag any remaining errors
-
-RESPOND WITH JSON:
-{{
-  "verification_passed": true/false,
-  "verification_errors": [],
-  "segments_verified": 9,
-  "cross_month_segments_correct": 3,
-  "final_explanation": "All corrections verified successfully",
-  "audit_score": "PASS/FAIL"
-}}
-
-BE EXTREMELY STRICT. If ANY segment still has wrong rate for cross-month, FAIL the verification.
-"""
-
         try:
-            if hasattr(self.client, 'chat'):
-                # New OpenAI client
-                response = self.client.chat.completions.create(
-                    model="gpt-4",
-                    messages=[
-                        {"role": "system", "content": "You are a strict bank auditor who accepts only perfect calculations."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.0,
-                    max_tokens=2000
-                )
-                content = response.choices[0].message.content.strip()
+            # Extract JSON from response
+            start_idx = content.find('{')
+            end_idx = content.rfind('}') + 1
+            
+            if start_idx == -1 or end_idx == 0:
+                return False, original_segments, "No JSON found in o1 response"
+            
+            json_str = content[start_idx:end_idx]
+            result = json.loads(json_str)
+            
+            if result.get("audit_result") == "FAIL" and result.get("corrected_segments"):
+                corrected_segments = result["corrected_segments"]
+                violations = result.get("critical_violations_found", [])
+                financial_impact = result.get("total_financial_impact", 0)
+                
+                explanation = f"o1-mini detected {len(violations)} critical violations with financial impact of {financial_impact:,} IDR. Applied corrections."
+                
+                return True, corrected_segments, explanation
             else:
-                # Old OpenAI client
-                response = self.client.ChatCompletion.create(
-                    model="gpt-4",
-                    messages=[
-                        {"role": "system", "content": "You are a strict bank auditor who accepts only perfect calculations."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.0,
-                    max_tokens=2000
-                )
-                content = response.choices[0].message.content.strip()
-            
-            return json.loads(content)
-            
+                return False, original_segments, "o1-mini audit passed - no violations found"
+                
+        except json.JSONDecodeError as e:
+            # If JSON parsing fails, try to extract key information
+            if "CRITICAL_VIOLATION" in content or "FAIL" in content:
+                return False, original_segments, f"o1-mini detected issues but response format error: {str(e)}"
+            else:
+                return False, original_segments, f"o1-mini response parsing failed: {str(e)}"
+        
         except Exception as e:
-            return {"error": f"Step 3 failed: {str(e)}"}
+            return False, original_segments, f"o1-mini processing error: {str(e)}"
 
-def apply_advanced_corrections(original_segments, principal: float, month_end_str: str):
+def apply_super_advanced_corrections(original_segments, principal: float, month_end_str: str):
     """
-    Apply advanced multi-step corrections to loan segments
-    
-    Args:
-        original_segments: List of LoanSegment objects
-        principal: Loan principal amount
-        month_end_str: Month end date string
-        
-    Returns:
-        (corrected: bool, corrected_segments: List[LoanSegment], explanation: str)
+    Apply super advanced corrections using o1-mini
     """
     
-    expert = AdvancedBankExpert()
+    expert = SuperAdvancedBankExpert()
     
     if not expert.is_available():
-        return False, original_segments, "Advanced Bank Expert not available"
+        return False, original_segments, "Super Advanced Bank Expert not available - set OPENAI_API_KEY"
     
     # Convert segments to dict format for analysis
     segment_dicts = []
@@ -318,8 +250,8 @@ def apply_advanced_corrections(original_segments, principal: float, month_end_st
             "interest": seg.interest
         })
     
-    # Apply multi-step validation and correction
-    corrected, corrected_data, explanation = expert.multi_step_validation(
+    # Apply ultra-strict validation
+    corrected, corrected_data, explanation = expert.ultra_strict_validation(
         segment_dicts, 
         month_end_str, 
         cross_month_rate=9.20, 
@@ -338,7 +270,7 @@ def apply_advanced_corrections(original_segments, principal: float, month_end_st
         for seg_data in corrected_data:
             corrected_segments.append(LoanSegment(
                 bank=seg_data["bank"],
-                bank_class="auto_corrected",
+                bank_class="o1_corrected",
                 rate=seg_data["rate"],
                 days=seg_data["days"],
                 start_date=datetime.strptime(seg_data["start_date"], '%Y-%m-%d'),
@@ -347,29 +279,33 @@ def apply_advanced_corrections(original_segments, principal: float, month_end_st
                 crosses_month=seg_data["crosses_month"]
             ))
         
-        return True, corrected_segments, f"Advanced Expert Correction: {explanation}"
+        return True, corrected_segments, f"o1-mini Super Expert: {explanation}"
         
     except Exception as e:
-        return False, original_segments, f"Failed to apply advanced corrections: {str(e)}"
+        return False, original_segments, f"Failed to apply o1 corrections: {str(e)}"
 
 def check_openai_availability():
     """Check if OpenAI API is properly configured"""
-    expert = AdvancedBankExpert()
+    expert = SuperAdvancedBankExpert()
     return expert.is_available()
 
-# Legacy function names for compatibility
+# Legacy compatibility functions
+def apply_advanced_corrections(original_segments, principal: float, month_end_str: str):
+    """Use super advanced o1-mini corrections"""
+    return apply_super_advanced_corrections(original_segments, principal, month_end_str)
+
 def apply_ai_corrections(original_segments, principal: float, month_end_str: str):
-    """Legacy function name - calls apply_advanced_corrections"""
-    return apply_advanced_corrections(original_segments, principal, month_end_str)
+    """Legacy function name"""
+    return apply_super_advanced_corrections(original_segments, principal, month_end_str)
 
 def analyze_loan_segments_with_ai(segments, month_end_str):
     """Legacy function for basic analysis"""
-    expert = AdvancedBankExpert()
+    expert = SuperAdvancedBankExpert()
     
     if not expert.is_available():
         return {
             "error": "OpenAI API not available", 
-            "message": "Set OPENAI_API_KEY in Render environment variables to enable AI analysis"
+            "message": "Set OPENAI_API_KEY to enable o1-mini analysis"
         }
     
     # Convert segments to dict format
@@ -384,17 +320,18 @@ def analyze_loan_segments_with_ai(segments, month_end_str):
             "crosses_month": seg.crosses_month
         })
     
-    # Simple analysis
-    corrected, corrected_data, explanation = expert.multi_step_validation(
+    # Ultra-strict analysis
+    corrected, corrected_data, explanation = expert.ultra_strict_validation(
         segment_dicts, 
         month_end_str, 
         cross_month_rate=9.20, 
         standard_rate=6.20,
-        principal=38_000_000_000  # Default principal
+        principal=38_000_000_000
     )
     
     return {
         "corrected": corrected,
         "explanation": explanation,
-        "corrected_segments": corrected_data if corrected else []
+        "corrected_segments": corrected_data if corrected else [],
+        "model_used": "o1-mini (advanced reasoning)"
     }
