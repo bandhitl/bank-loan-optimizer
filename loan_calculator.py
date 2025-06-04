@@ -136,6 +136,46 @@ class BankLoanCalculator:
         except (AttributeError, ValueError):
             return True
     
+    def get_next_business_day(self, date: datetime) -> datetime:
+        """🔥 FIXED: Get next business day properly"""
+        try:
+            next_day = date + timedelta(days=1)
+            safety_counter = 0
+            
+            while self.is_weekend_or_holiday(next_day) and safety_counter < 14:
+                next_day += timedelta(days=1)
+                safety_counter += 1
+                
+                if safety_counter >= 14:
+                    self.log_message(f"⚠️ WARNING: Couldn't find business day after {date}, using {next_day}", "WARN")
+                    break
+            
+            return next_day
+            
+        except Exception as e:
+            self.log_message(f"Business day calculation error: {e}", "ERROR")
+            return date + timedelta(days=1)
+    
+    def get_previous_business_day(self, date: datetime) -> datetime:
+        """🔥 FIXED: Get previous business day"""
+        try:
+            prev_day = date - timedelta(days=1)
+            safety_counter = 0
+            
+            while self.is_weekend_or_holiday(prev_day) and safety_counter < 14:
+                prev_day -= timedelta(days=1)
+                safety_counter += 1
+                
+                if safety_counter >= 14:
+                    self.log_message(f"⚠️ WARNING: Couldn't find business day before {date}, using {prev_day}", "WARN")
+                    break
+            
+            return prev_day
+            
+        except Exception as e:
+            self.log_message(f"Previous business day calculation error: {e}", "ERROR")
+            return date - timedelta(days=1)
+    
     def calculate_interest(self, principal: float, rate: float, days: int) -> float:
         """Calculate interest with validation"""
         try:

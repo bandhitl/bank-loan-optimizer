@@ -1,7 +1,7 @@
 import os
 import json
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Tuple
 
 def create_master_banking_education_prompt() -> str:
     """
