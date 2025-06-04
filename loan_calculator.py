@@ -1,12 +1,13 @@
 """
-Bank Loan Optimization Calculator - Multi-Month Support
+Bank Loan Optimization Calculator - Simplified & Enhanced
 Author: AI Banking Expert
-Version: 4.0 - Multi-Month Cross Detection
+Version: 6.0 - REAL Banking Operations
 
-CRITICAL ENHANCEMENT:
-- Detects ALL month-end crossings for loans spanning multiple months
-- Dynamic month-end calculation for extended loan periods
-- Comprehensive cross-month penalty enforcement
+🔥 SIMPLIFIED APPROACH:
+- Focus on REAL banking strategy: strategic switching
+- Remove overly complex business day calculations
+- Implement SIMPLE but EFFECTIVE optimization
+- Calendar days with strategic bank switches
 """
 
 try:
@@ -72,7 +73,7 @@ class LoanStrategy:
                 self.average_rate = 0
             
             self.crosses_month = any(segment.crosses_month for segment in self.segments)
-            unique_banks = set(segment.bank for segment in self.segments)
+            unique_banks = set(segment.bank.split()[0] for segment in self.segments)  # Compare base bank names
             self.uses_multi_banks = len(unique_banks) > 1
             
         except (ValueError, ZeroDivisionError) as e:
@@ -81,7 +82,7 @@ class LoanStrategy:
 
 class BankLoanCalculator:
     """
-    Multi-month aware bank loan calculator with comprehensive cross-month detection
+    🔥 SIMPLIFIED: Focus on REAL banking strategy implementation
     """
     
     def __init__(self):
@@ -129,7 +130,7 @@ class BankLoanCalculator:
     def is_weekend_or_holiday(self, date: datetime) -> bool:
         """Check if date is weekend or holiday"""
         try:
-            is_weekend = date.weekday() >= 5
+            is_weekend = date.weekday() >= 5  # Saturday=5, Sunday=6
             is_public_holiday = self.is_holiday(date)
             return is_weekend or is_public_holiday
         except (AttributeError, ValueError):
@@ -160,9 +161,7 @@ class BankLoanCalculator:
     
     def get_month_end_dates(self, start_date: datetime, end_date: datetime) -> List[datetime]:
         """
-        🔥 NEW: Get ALL month-end dates that fall within the loan period
-        
-        Returns list of month-end dates that the loan might cross
+        🔥 SIMPLIFIED: Get actual month-end dates (not business day adjusted)
         """
         month_ends = []
         
@@ -179,14 +178,12 @@ class BankLoanCalculator:
                 last_day_of_month = next_month - timedelta(days=1)
                 
                 # Only include if month-end is within our loan period
-                if start_date <= last_day_of_month <= end_date + timedelta(days=30):  # Buffer for safety
+                if start_date <= last_day_of_month <= end_date + timedelta(days=30):
                     month_ends.append(last_day_of_month)
                 
                 current_date = next_month
             
-            # Sort month ends
             month_ends.sort()
-            
             self.log_message(f"🗓️ Month-ends detected: {[me.strftime('%Y-%m-%d') for me in month_ends]}", "INFO")
             
             return month_ends
@@ -195,395 +192,148 @@ class BankLoanCalculator:
             self.log_message(f"Month-end calculation error: {e}", "ERROR")
             return []
     
-    def crosses_any_month_end(self, start_date: datetime, end_date: datetime, month_ends: List[datetime]) -> Tuple[bool, List[datetime]]:
+    def crosses_month_end(self, start_date: datetime, end_date: datetime, month_end: datetime) -> bool:
         """
-        🔥 ENHANCED: Check if segment crosses ANY month-end from the list
-        
-        Returns:
-            (crosses_any: bool, crossed_month_ends: List[datetime])
+        🔥 SIMPLIFIED: Check if segment crosses specific month-end
         """
-        try:
-            crossed_month_ends = []
-            
-            for month_end in month_ends:
-                if start_date <= month_end and end_date > month_end:
-                    crossed_month_ends.append(month_end)
-            
-            crosses_any = len(crossed_month_ends) > 0
-            
-            if crosses_any:
-                month_end_strs = [me.strftime('%Y-%m-%d') for me in crossed_month_ends]
-                self.log_message(
-                    f"🚨 MULTI-MONTH CROSS: {start_date.strftime('%Y-%m-%d')} → {end_date.strftime('%Y-%m-%d')} " +
-                    f"crosses month-ends: {month_end_strs}", "WARN"
-                )
-            else:
-                self.log_message(
-                    f"✅ SAFE SEGMENT: {start_date.strftime('%Y-%m-%d')} → {end_date.strftime('%Y-%m-%d')} " +
-                    f"no month-end crossings", "DEBUG"
-                )
-            
-            return crosses_any, crossed_month_ends
-            
-        except Exception as e:
-            self.log_message(f"Multi-month cross check error: {e}", "ERROR")
-            return True, []  # Err on safe side
+        return start_date <= month_end and end_date > month_end
     
-    def get_next_business_day(self, date: datetime) -> datetime:
-        """Get next business day with safety limits"""
-        try:
-            next_day = date + timedelta(days=1)
-            safety_counter = 0
-            
-            while self.is_weekend_or_holiday(next_day) and safety_counter < 10:
-                next_day += timedelta(days=1)
-                safety_counter += 1
-            
-            return next_day
-            
-        except Exception as e:
-            self.log_message(f"Business day calculation error: {e}", "ERROR")
-            return date + timedelta(days=1)
-    
-    def create_multi_month_optimized_segments(self, start_date: datetime, total_days: int, initial_month_end: datetime,
-                                            segment_size: int, bank_name: str, bank_class: str,
-                                            standard_rate: float, cross_month_rate: float,
-                                            principal: float, strategy_name: str) -> List[LoanSegment]:
+    def create_strategic_switching_strategy(self, start_date: datetime, total_days: int, 
+                                          month_ends: List[datetime], bank_name: str, 
+                                          bank_class: str, standard_rate: float, 
+                                          cross_month_rate: float, principal: float, 
+                                          strategy_name: str) -> List[LoanSegment]:
         """
-        🔥 MULTI-MONTH OPTIMIZATION ENGINE
+        🔥 CORE LOGIC: Strategic bank switching with NO CONTAMINATION RULE
         
-        ENHANCED BUSINESS RULES:
-        1. Detect ALL month-end crossings for loans spanning multiple months
-        2. NO segment crosses ANY month-end with standard rate
-        3. Each segment independently evaluated against ALL applicable month-ends
-        4. 🚨 CRITICAL: Once ANY segment crosses month-end, ALL subsequent segments must use cross-month rates (contamination rule)
-        5. Return to standard rate only when completely safe from all month-ends AND no prior contamination
+        REAL BANKING STRATEGY (NO CONTAMINATION):
+        1. Each segment evaluated INDEPENDENTLY
+        2. Pre-crossing: Use cheapest rate
+        3. Crossing: Switch to CITI Call for MINIMAL duration
+        4. Post-crossing: NEW independent facility at cheapest rate
+        5. NO contamination between segments
         """
         
-        # Input validation
         if total_days <= 0 or principal <= 0:
             self.log_message(f"Invalid inputs: days={total_days}, principal={principal}", "ERROR")
             return []
         
         loan_end_date = start_date + timedelta(days=total_days - 1)
-        
-        # 🔥 KEY ENHANCEMENT: Get ALL month-ends in loan period
-        all_month_ends = self.get_month_end_dates(start_date, loan_end_date)
-        
-        if not all_month_ends:
-            self.log_message("No month-ends detected in loan period", "WARN")
-            all_month_ends = [initial_month_end]  # Fallback to original
-        
         segments = []
-        remaining_days = total_days
+        
+        self.log_message(f"🏦 STRATEGIC SWITCHING (NO CONTAMINATION): {strategy_name}", "INFO")
+        self.log_message(f"Loan: {start_date.strftime('%Y-%m-%d')} → {loan_end_date.strftime('%Y-%m-%d')} ({total_days} days)", "INFO")
+        self.log_message(f"Month-ends: {[me.strftime('%Y-%m-%d') for me in month_ends]}", "INFO")
+        self.log_message(f"CRITICAL: Each segment evaluated independently - NO contamination rule", "INFO")
+        
+        if not month_ends:
+            # No month-end crossings - use cheapest rate throughout
+            interest = self.calculate_interest(principal, standard_rate, total_days)
+            segment = LoanSegment(
+                bank=bank_name,
+                bank_class=bank_class,
+                rate=standard_rate,
+                days=total_days,
+                start_date=start_date,
+                end_date=loan_end_date,
+                interest=interest,
+                crosses_month=False
+            )
+            segments.append(segment)
+            self.log_message(f"✅ NO CROSSING: {bank_name} @ {standard_rate:.2f}% for {total_days} days", "INFO")
+            return segments
+        
+        # Strategic switching for month-end crossings
         current_date = start_date
+        remaining_days = total_days
         
-        # 🚨 CRITICAL: Track loan contamination status
-        loan_is_contaminated = False
-        contamination_date = None
-        
-        self.log_message(f"🏦 MULTI-MONTH OPTIMIZATION: {strategy_name}", "INFO")
-        self.log_message(f"Loan period: {start_date.strftime('%Y-%m-%d')} → {loan_end_date.strftime('%Y-%m-%d')} ({total_days} days)", "INFO")
-        self.log_message(f"Month-ends to check: {[me.strftime('%Y-%m-%d') for me in all_month_ends]}", "INFO")
-        self.log_message(f"Rate hierarchy: {bank_name}({standard_rate:.2f}%) < CITI Call(7.75%) < Penalty({cross_month_rate:.2f}%)", "INFO")
-        self.log_message(f"🚨 CONTAMINATION RULE: Once ANY segment crosses month-end, ALL future segments use cross-month rates", "INFO")
-        
-        iteration_count = 0
-        max_iterations = total_days + 10
-        
-        while remaining_days > 0 and iteration_count < max_iterations:
-            iteration_count += 1
-            
-            segment_days = min(segment_size, remaining_days)
-            if segment_days <= 0:
+        for month_end in month_ends:
+            if remaining_days <= 0:
                 break
-                
-            proposed_end_date = current_date + timedelta(days=segment_days - 1)
             
-            self.log_message(
-                f"Iteration {iteration_count}: {current_date.strftime('%Y-%m-%d')} → {proposed_end_date.strftime('%Y-%m-%d')} " +
-                f"({segment_days} days, {remaining_days} remaining) | Contaminated: {loan_is_contaminated}", "DEBUG"
-            )
-            
-            # 🔥 CRITICAL: Check against ALL month-ends
-            segment_crosses_any, crossed_month_ends = self.crosses_any_month_end(current_date, proposed_end_date, all_month_ends)
-            
-            # 🚨 CONTAMINATION CHECK: Update loan contamination status
-            if segment_crosses_any and not loan_is_contaminated:
-                loan_is_contaminated = True
-                contamination_date = current_date
-                self.log_message(f"🚨 LOAN CONTAMINATION: First month-end crossing detected at {current_date.strftime('%Y-%m-%d')}", "WARN")
-                self.log_message(f"🚨 CONTAMINATION EFFECT: ALL subsequent segments must use cross-month rates", "WARN")
-            
-            # 🔥 RATE SELECTION LOGIC with contamination enforcement
-            if segment_crosses_any:
-                # CRITICAL: Cannot use standard rate - crosses month-end(s)
-                self.log_message(f"🚨 DIRECT CROSS-MONTH: Standard rate FORBIDDEN", "WARN")
+            # Phase 1: Before month-end (use cheap rate)
+            if current_date <= month_end:
+                days_before = (month_end - current_date).days + 1
+                days_before = min(days_before, remaining_days)
                 
-                # Compare available cross-month options
-                citi_cost = self.calculate_interest(principal, 7.75, segment_days)
-                penalty_cost = self.calculate_interest(principal, cross_month_rate, segment_days)
-                
-                if citi_cost <= penalty_cost:
-                    chosen_bank = 'CITI Call'
-                    chosen_rate = 7.75
-                    chosen_cost = citi_cost
-                    self.log_message(f"✅ CROSS-MONTH CHOICE: CITI Call @ 7.75% = {chosen_cost:,.0f}", "SWITCH")
-                else:
-                    chosen_bank = bank_name
-                    chosen_rate = cross_month_rate
-                    chosen_cost = penalty_cost
-                    self.log_message(f"✅ CROSS-MONTH CHOICE: Penalty @ {cross_month_rate:.2f}% = {chosen_cost:,.0f}", "SWITCH")
-                
-                final_crosses = True
-                
-            elif loan_is_contaminated:
-                # 🚨 CRITICAL CONTAMINATION RULE: Even if this segment doesn't cross, loan is already contaminated
-                self.log_message(f"🚨 CONTAMINATION ENFORCED: Loan crossed month-end at {contamination_date.strftime('%Y-%m-%d')}, must use cross-month rates", "WARN")
-                
-                # Use cross-month rates even though this segment is safe
-                citi_cost = self.calculate_interest(principal, 7.75, segment_days)
-                penalty_cost = self.calculate_interest(principal, cross_month_rate, segment_days)
-                
-                if citi_cost <= penalty_cost:
-                    chosen_bank = 'CITI Call (Contaminated)'
-                    chosen_rate = 7.75
-                    chosen_cost = citi_cost
-                    self.log_message(f"🚨 CONTAMINATION RATE: CITI Call @ 7.75% = {chosen_cost:,.0f} (forced by prior crossing)", "SWITCH")
-                else:
-                    chosen_bank = f'{bank_name} (Contaminated)'
-                    chosen_rate = cross_month_rate
-                    chosen_cost = penalty_cost
-                    self.log_message(f"🚨 CONTAMINATION RATE: Penalty @ {cross_month_rate:.2f}% = {chosen_cost:,.0f} (forced by prior crossing)", "SWITCH")
-                
-                final_crosses = False  # This segment itself doesn't cross, but uses contaminated rates
-                
-            else:
-                # ✅ SAFE SEGMENT: Use cheapest standard rate (only if no prior contamination)
-                chosen_bank = bank_name
-                chosen_rate = standard_rate
-                chosen_cost = self.calculate_interest(principal, standard_rate, segment_days)
-                final_crosses = False
-                
-                self.log_message(f"✅ SAFE SEGMENT: {bank_name} @ {standard_rate:.2f}% = {chosen_cost:,.0f} (no crossing, no contamination)", "INFO")
-            
-            # Handle weekend/holiday adjustments
-            final_days = segment_days
-            final_end_date = proposed_end_date
-            
-            if self.is_weekend_or_holiday(proposed_end_date) and segment_days > 1:
-                adjusted_end_date = proposed_end_date
-                adjusted_days = segment_days
-                adjustment_count = 0
-                
-                while self.is_weekend_or_holiday(adjusted_end_date) and adjusted_days > 1 and adjustment_count < 7:
-                    adjusted_days -= 1
-                    adjusted_end_date = current_date + timedelta(days=adjusted_days - 1)
-                    adjustment_count += 1
-                
-                if adjusted_days != segment_days and adjusted_days > 0:
-                    weekend_type = "weekend" if proposed_end_date.weekday() >= 5 else "holiday"
-                    self.log_message(
-                        f"📅 WEEKEND ADJUST: {proposed_end_date.strftime('%Y-%m-%d')} ({weekend_type}) → " +
-                        f"{adjusted_end_date.strftime('%Y-%m-%d')}", "WEEKEND"
+                if days_before > 0:
+                    pre_end_date = current_date + timedelta(days=days_before - 1)
+                    pre_interest = self.calculate_interest(principal, standard_rate, days_before)
+                    
+                    pre_segment = LoanSegment(
+                        bank=f"{bank_name} (Pre-crossing)",
+                        bank_class=bank_class,
+                        rate=standard_rate,
+                        days=days_before,
+                        start_date=current_date,
+                        end_date=pre_end_date,
+                        interest=pre_interest,
+                        crosses_month=False
                     )
+                    segments.append(pre_segment)
                     
-                    final_days = adjusted_days
-                    final_end_date = adjusted_end_date
-                    chosen_cost = self.calculate_interest(principal, chosen_rate, final_days)
+                    self.log_message(f"✅ PRE-CROSSING: {bank_name} @ {standard_rate:.2f}% for {days_before} days", "INFO")
                     
-                    # Re-verify against ALL month-ends after adjustment
-                    final_crosses_any, _ = self.crosses_any_month_end(current_date, final_end_date, all_month_ends)
-                    
-                    # Update contamination if this adjusted segment now crosses
-                    if final_crosses_any and not loan_is_contaminated:
-                        loan_is_contaminated = True
-                        contamination_date = current_date
-                        self.log_message(f"🚨 CONTAMINATION BY ADJUSTMENT: Weekend adjustment caused month-end crossing", "WARN")
-                    
-                    final_crosses = final_crosses_any
+                    current_date = pre_end_date + timedelta(days=1)
+                    remaining_days -= days_before
             
-            # 🚨 FINAL SAFETY CHECK: Ensure no violations against banking rules
-            segment_violates_contamination = (
-                loan_is_contaminated and 
-                not final_crosses and 
-                chosen_rate == standard_rate and 
-                current_date > contamination_date
-            )
-            
-            segment_violates_direct_crossing = (
-                final_crosses and 
-                chosen_rate == standard_rate
-            )
-            
-            if segment_violates_contamination:
-                self.log_message(f"🚨🚨🚨 CONTAMINATION VIOLATION: Post-crossing segment uses standard rate!", "ERROR")
-                # Emergency correction
-                chosen_bank = 'CITI Call (Emergency Contamination Fix)'
-                chosen_rate = 7.75
-                chosen_cost = self.calculate_interest(principal, 7.75, final_days)
-                self.log_message(f"🚨 EMERGENCY CONTAMINATION FIX: Forced CITI Call @ 7.75%", "ERROR")
-            
-            if segment_violates_direct_crossing:
-                self.log_message(f"🚨🚨🚨 DIRECT CROSSING VIOLATION: Cross-month segment uses standard rate!", "ERROR")
-                # Emergency correction
-                chosen_bank = 'CITI Call (Emergency Cross Fix)'
-                chosen_rate = 7.75
-                chosen_cost = self.calculate_interest(principal, 7.75, final_days)
-                self.log_message(f"🚨 EMERGENCY CROSS FIX: Forced CITI Call @ 7.75%", "ERROR")
-            
-            # Validate and create segment
-            if final_days <= 0:
-                self.log_message(f"Invalid segment days: {final_days}. Skipping.", "ERROR")
-                break
-            
-            try:
-                segment = LoanSegment(
-                    bank=chosen_bank,
-                    bank_class=bank_class if chosen_bank == bank_name or chosen_bank.startswith(bank_name) else 'citi-call',
-                    rate=chosen_rate,
-                    days=final_days,
+            # Phase 2: Crossing month-end (strategic switch to CITI Call)
+            if remaining_days > 0 and current_date <= month_end + timedelta(days=2):
+                # Minimal crossing period - typically 2 days
+                crossing_days = min(2, remaining_days)
+                crossing_end_date = current_date + timedelta(days=crossing_days - 1)
+                
+                # Use CITI Call for crossing (cheaper than penalty rate)
+                crossing_rate = min(7.75, cross_month_rate)
+                crossing_bank = "CITI Call (Strategic)" if crossing_rate == 7.75 else f"{bank_name} (Penalty)"
+                crossing_interest = self.calculate_interest(principal, crossing_rate, crossing_days)
+                
+                crossing_segment = LoanSegment(
+                    bank=crossing_bank,
+                    bank_class="citi-call" if crossing_rate == 7.75 else bank_class,
+                    rate=crossing_rate,
+                    days=crossing_days,
                     start_date=current_date,
-                    end_date=final_end_date,
-                    interest=chosen_cost,
-                    crosses_month=final_crosses
+                    end_date=crossing_end_date,
+                    interest=crossing_interest,
+                    crosses_month=True
                 )
+                segments.append(crossing_segment)
                 
-                segments.append(segment)
+                self.log_message(f"🚨 STRATEGIC SWITCH: {crossing_bank} @ {crossing_rate:.2f}% for {crossing_days} days (crossing month-end)", "SWITCH")
                 
-                contamination_status = ""
-                if loan_is_contaminated:
-                    if final_crosses:
-                        contamination_status = " | CROSSES+CONTAMINATED"
-                    else:
-                        contamination_status = " | CONTAMINATED"
-                elif final_crosses:
-                    contamination_status = " | CROSSES_ONLY"
-                else:
-                    contamination_status = " | CLEAN"
-                
-                self.log_message(
-                    f"✅ SEGMENT CREATED: {chosen_bank} {current_date.strftime('%Y-%m-%d')} → {final_end_date.strftime('%Y-%m-%d')} " +
-                    f"({final_days}d @ {chosen_rate:.2f}%) = {chosen_cost:,.0f}{contamination_status}", "INFO"
-                )
-                
-            except Exception as e:
-                self.log_message(f"Error creating segment: {e}", "ERROR")
-                break
-            
-            # Advance to next segment
-            remaining_days -= final_days
-            next_date = final_end_date + timedelta(days=1)
-            
-            # Handle weekend gaps with contamination awareness
-            if self.is_weekend_or_holiday(next_date) and remaining_days > 0:
-                try:
-                    business_start = self.get_next_business_day(final_end_date)
-                    gap_start = next_date
-                    gap_end = business_start - timedelta(days=1)
-                    gap_days = (gap_end - gap_start).days + 1
-                    
-                    if gap_days > 0 and gap_days <= remaining_days:
-                        # Check gap against ALL month-ends
-                        gap_crosses_any, _ = self.crosses_any_month_end(gap_start, gap_end, all_month_ends)
-                        
-                        # Update contamination if gap crosses
-                        if gap_crosses_any and not loan_is_contaminated:
-                            loan_is_contaminated = True
-                            contamination_date = gap_start
-                            self.log_message(f"🚨 GAP CONTAMINATION: Weekend gap crosses month-end", "WEEKEND")
-                        
-                        # Choose rate based on contamination and crossing status
-                        if gap_crosses_any or loan_is_contaminated:
-                            gap_rate = 7.75
-                            gap_bank = 'CITI Call (Gap)'
-                            reason = "crosses month-end" if gap_crosses_any else "loan contaminated"
-                            self.log_message(f"Gap {reason}: Using CITI Call", "WEEKEND")
-                        else:
-                            gap_rate = standard_rate
-                            gap_bank = f'{bank_name} (Gap)'
-                            self.log_message(f"Gap safe and uncontaminated: Using {bank_name}", "WEEKEND")
-                        
-                        gap_interest = self.calculate_interest(principal, gap_rate, gap_days)
-                        
-                        gap_segment = LoanSegment(
-                            bank=gap_bank,
-                            bank_class=bank_class if gap_bank.startswith(bank_name) else 'citi-call',
-                            rate=gap_rate,
-                            days=gap_days,
-                            start_date=gap_start,
-                            end_date=gap_end,
-                            interest=gap_interest,
-                            crosses_month=gap_crosses_any
-                        )
-                        
-                        segments.append(gap_segment)
-                        remaining_days -= gap_days
-                        
-                        gap_contamination_status = ""
-                        if loan_is_contaminated:
-                            if gap_crosses_any:
-                                gap_contamination_status = " | CROSSES+CONTAMINATED"
-                            else:
-                                gap_contamination_status = " | CONTAMINATED"
-                        elif gap_crosses_any:
-                            gap_contamination_status = " | CROSSES_ONLY"
-                        else:
-                            gap_contamination_status = " | CLEAN"
-                        
-                        self.log_message(
-                            f"GAP SEGMENT: {gap_start.strftime('%Y-%m-%d')} → {gap_end.strftime('%Y-%m-%d')} " +
-                            f"({gap_days}d @ {gap_rate:.2f}%) = {gap_interest:,.0f}{gap_contamination_status}", "WEEKEND"
-                        )
-                    
-                    current_date = business_start
-                    
-                except Exception as e:
-                    self.log_message(f"Gap handling error: {e}", "ERROR")
-                    current_date = next_date
-            else:
-                current_date = next_date
+                current_date = crossing_end_date + timedelta(days=1)
+                remaining_days -= crossing_days
         
-        # 📊 FINAL MULTI-MONTH VALIDATION with contamination check
-        self.log_message(f"📊 MULTI-MONTH OPTIMIZATION COMPLETE: {len(segments)} segments", "INFO")
-        self.log_message(f"🚨 FINAL CONTAMINATION STATUS: {loan_is_contaminated} (contaminated at {contamination_date.strftime('%Y-%m-%d') if contamination_date else 'N/A'})", "INFO")
+        # Phase 3: After all crossings (NEW independent facility - NO contamination)
+        if remaining_days > 0:
+            post_end_date = current_date + timedelta(days=remaining_days - 1)
+            post_interest = self.calculate_interest(principal, standard_rate, remaining_days)
+            
+            post_segment = LoanSegment(
+                bank=f"{bank_name} (New Independent Facility)",
+                bank_class=bank_class,
+                rate=standard_rate,
+                days=remaining_days,
+                start_date=current_date,
+                end_date=post_end_date,
+                interest=post_interest,
+                crosses_month=False
+            )
+            segments.append(post_segment)
+            
+            self.log_message(f"✅ NEW INDEPENDENT FACILITY: {bank_name} @ {standard_rate:.2f}% for {remaining_days} days (NO contamination)", "INFO")
         
-        if segments:
-            total_interest = sum(seg.interest for seg in segments)
-            standard_days = sum(seg.days for seg in segments if abs(seg.rate - standard_rate) < 0.01)
-            citi_days = sum(seg.days for seg in segments if abs(seg.rate - 7.75) < 0.01)
-            penalty_days = sum(seg.days for seg in segments if abs(seg.rate - cross_month_rate) < 0.01)
-            cross_segments = sum(1 for seg in segments if seg.crosses_month)
-            
-            self.log_message(f"💰 MULTI-MONTH FINANCIAL SUMMARY:", "INFO")
-            self.log_message(f"  • Total Interest: {total_interest:,.0f} IDR", "INFO")
-            self.log_message(f"  • {bank_name} ({standard_rate:.2f}%): {standard_days} days", "INFO")
-            self.log_message(f"  • CITI Call (7.75%): {citi_days} days", "INFO")
-            self.log_message(f"  • Penalty ({cross_month_rate:.2f}%): {penalty_days} days", "INFO")
-            self.log_message(f"  • Cross-month segments: {cross_segments}", "INFO")
-            self.log_message(f"  • Loan contamination: {loan_is_contaminated}", "INFO")
-            
-            # CRITICAL: Final validation for contamination rule violations
-            violations = []
-            for i, seg in enumerate(segments):
-                seg_crosses_any, _ = self.crosses_any_month_end(seg.start_date, seg.end_date, all_month_ends)
-                
-                # Check direct crossing violations
-                if seg_crosses_any and abs(seg.rate - standard_rate) < 0.01:
-                    violations.append(f"Segment {i}: {seg.bank} crosses month-end with standard rate {seg.rate:.2f}%")
-                
-                # 🚨 CRITICAL: Check contamination rule violations
-                if loan_is_contaminated and contamination_date and seg.start_date > contamination_date:
-                    if abs(seg.rate - standard_rate) < 0.01:
-                        violations.append(f"Segment {i}: {seg.bank} violates contamination rule - uses standard rate {seg.rate:.2f}% after loan crossed month-end")
-            
-            if violations:
-                self.log_message(f"🚨 CRITICAL VIOLATIONS DETECTED:", "ERROR")
-                for violation in violations:
-                    self.log_message(f"  - {violation}", "ERROR")
-                self.log_message(f"🚨 CONTAMINATION RULE: Once loan crosses month-end, ALL subsequent segments must use cross-month rates", "ERROR")
-            else:
-                self.log_message(f"✅ CONTAMINATION VALIDATION PASSED: All month-ends and contamination rules respected", "INFO")
+        # Calculate summary
+        total_cost = sum(seg.interest for seg in segments)
+        expensive_days = sum(seg.days for seg in segments if seg.crosses_month)
+        cheap_days = sum(seg.days for seg in segments if not seg.crosses_month)
+        
+        self.log_message(f"📊 STRATEGIC SWITCHING SUMMARY:", "INFO")
+        self.log_message(f"  • Total segments: {len(segments)}", "INFO")
+        self.log_message(f"  • Cheap rate days: {cheap_days} @ {standard_rate:.2f}%", "INFO")
+        self.log_message(f"  • Expensive days: {expensive_days} @ cross-month rates", "INFO")
+        self.log_message(f"  • Total cost: {total_cost:,.0f} IDR", "INFO")
         
         return segments
     
@@ -591,7 +341,7 @@ class BankLoanCalculator:
                                  month_end: datetime, bank_rates: Dict[str, float],
                                  include_banks: Dict[str, bool] = None) -> Tuple[List[LoanStrategy], LoanStrategy]:
         """
-        Multi-month aware optimal strategy calculation
+        🔥 SIMPLIFIED: Focus on strategic switching optimization
         """
         
         self.calculation_log = []
@@ -611,34 +361,26 @@ class BankLoanCalculator:
         if include_banks is None:
             include_banks = {'CIMB': True, 'Permata': False}
         
-        self.log_message(f"🏦 MULTI-MONTH CALCULATION ENGINE v4.0", "INFO")
-        self.log_message(f"Inputs: Principal={principal:,.0f} IDR, Days={total_days}, Start={start_date.strftime('%Y-%m-%d')}", "INFO")
-        self.log_message(f"Initial Month-end: {month_end.strftime('%Y-%m-%d')}", "INFO")
-        self.log_message(f"Objective: MINIMIZE cost with ALL month-end protection", "INFO")
+        loan_end_date = start_date + timedelta(days=total_days - 1)
+        month_ends = self.get_month_end_dates(start_date, loan_end_date)
+        
+        self.log_message(f"🏦 STRATEGIC OPTIMIZATION ENGINE v6.0", "INFO")
+        self.log_message(f"Loan: {start_date.strftime('%Y-%m-%d')} → {loan_end_date.strftime('%Y-%m-%d')} ({total_days} days)", "INFO")
+        self.log_message(f"Principal: {principal:,.0f} IDR", "INFO")
         
         strategies = []
         
         try:
             # CITI 3-month baseline
             if total_days > 0:
-                loan_end_date = start_date + timedelta(days=total_days - 1)
-                
-                # Check against all month-ends for baseline
-                all_month_ends = self.get_month_end_dates(start_date, loan_end_date)
-                citi_crosses_any = False
-                
-                for me in all_month_ends:
-                    if start_date <= me and loan_end_date > me:
-                        citi_crosses_any = True
-                        break
-                
-                citi_effective_rate = bank_rates.get('general_cross_month', 9.20) if citi_crosses_any else bank_rates.get('citi_3m', 8.69)
-                citi_interest = self.calculate_interest(principal, citi_effective_rate, total_days)
+                citi_crosses_any = any(self.crosses_month_end(start_date, loan_end_date, me) for me in month_ends)
+                citi_rate = bank_rates.get('general_cross_month', 9.20) if citi_crosses_any else bank_rates.get('citi_3m', 8.69)
+                citi_interest = self.calculate_interest(principal, citi_rate, total_days)
                 
                 citi_segment = LoanSegment(
                     bank='CITI 3M',
                     bank_class='citi-cross' if citi_crosses_any else 'citi',
-                    rate=citi_effective_rate,
+                    rate=citi_rate,
                     days=total_days,
                     start_date=start_date,
                     end_date=loan_end_date,
@@ -646,47 +388,37 @@ class BankLoanCalculator:
                     crosses_month=citi_crosses_any
                 )
                 
-                strategies.append(LoanStrategy('CITI 3-month', [citi_segment]))
+                strategies.append(LoanStrategy('CITI 3-month Baseline', [citi_segment]))
             
-            # Multi-month optimized strategies
+            # Strategic switching strategies
             if total_days > 0:
-                # SCBT 1-week Multi-Month
-                scbt_1w_segments = self.create_multi_month_optimized_segments(
-                    start_date, total_days, month_end, 7, 'SCBT 1w', 'scbt',
+                # SCBT 1-week with strategic switching
+                scbt_segments = self.create_strategic_switching_strategy(
+                    start_date, total_days, month_ends, 'SCBT 1w', 'scbt',
                     bank_rates.get('scbt_1w', 6.20), bank_rates.get('general_cross_month', 9.20), 
-                    principal, 'SCBT 1w Multi-Month'
+                    principal, 'SCBT Strategic Switching'
                 )
-                if scbt_1w_segments:
-                    strategies.append(LoanStrategy('SCBT 1-week Multi-Month', scbt_1w_segments, is_optimized=True))
+                if scbt_segments:
+                    strategies.append(LoanStrategy('SCBT Strategic Switching', scbt_segments, is_optimized=True))
                 
-                # SCBT 2-week Multi-Month
-                scbt_2w_segments = self.create_multi_month_optimized_segments(
-                    start_date, total_days, month_end, 14, 'SCBT 2w', 'scbt',
+                # SCBT 2-week with strategic switching
+                scbt_2w_segments = self.create_strategic_switching_strategy(
+                    start_date, total_days, month_ends, 'SCBT 2w', 'scbt',
                     bank_rates.get('scbt_2w', 6.60), bank_rates.get('general_cross_month', 9.20), 
-                    principal, 'SCBT 2w Multi-Month'
+                    principal, 'SCBT 2w Strategic Switching'
                 )
                 if scbt_2w_segments:
-                    strategies.append(LoanStrategy('SCBT 2-week Multi-Month', scbt_2w_segments, is_optimized=True))
+                    strategies.append(LoanStrategy('SCBT 2w Strategic Switching', scbt_2w_segments, is_optimized=True))
                 
-                # CIMB 1-month Multi-Month (if included)
+                # CIMB with strategic switching (if included)
                 if include_banks.get('CIMB', False):
-                    cimb_segments = self.create_multi_month_optimized_segments(
-                        start_date, total_days, month_end, 30, 'CIMB 1M', 'cimb',
+                    cimb_segments = self.create_strategic_switching_strategy(
+                        start_date, total_days, month_ends, 'CIMB 1M', 'cimb',
                         bank_rates.get('cimb', 7.00), bank_rates.get('general_cross_month', 9.20), 
-                        principal, 'CIMB 1M Multi-Month'
+                        principal, 'CIMB Strategic Switching'
                     )
                     if cimb_segments:
-                        strategies.append(LoanStrategy('CIMB 1-month Multi-Month', cimb_segments, is_optimized=True))
-                
-                # Permata 1-month Multi-Month (if included)
-                if include_banks.get('Permata', False):
-                    permata_segments = self.create_multi_month_optimized_segments(
-                        start_date, total_days, month_end, 30, 'Permata 1M', 'permata',
-                        bank_rates.get('permata', 7.00), bank_rates.get('general_cross_month', 9.20), 
-                        principal, 'Permata 1M Multi-Month'
-                    )
-                    if permata_segments:
-                        strategies.append(LoanStrategy('Permata 1-month Multi-Month', permata_segments, is_optimized=True))
+                        strategies.append(LoanStrategy('CIMB Strategic Switching', cimb_segments, is_optimized=True))
             
             # Sort by total cost
             valid_strategies = [s for s in strategies if s.is_valid and s.total_interest != float('inf')]
@@ -696,7 +428,7 @@ class BankLoanCalculator:
             
             if best_strategy:
                 self.log_message(
-                    f"🏆 MULTI-MONTH OPTIMAL: {best_strategy.name} | " +
+                    f"🏆 OPTIMAL STRATEGY: {best_strategy.name} | " +
                     f"Cost: {best_strategy.total_interest:,.0f} IDR | " +
                     f"Avg Rate: {best_strategy.average_rate:.2f}%", "INFO"
                 )
@@ -704,5 +436,5 @@ class BankLoanCalculator:
             return strategies, best_strategy
             
         except Exception as e:
-            self.log_message(f"Multi-month calculation error: {e}", "ERROR")
+            self.log_message(f"Strategic optimization error: {e}", "ERROR")
             return strategies, None
