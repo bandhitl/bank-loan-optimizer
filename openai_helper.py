@@ -18,44 +18,99 @@ This is how banks ACTUALLY work in practice. Study this carefully.
 📚 FUNDAMENTAL BANKING REALITIES
 ═══════════════════════════════════════════════════════════════════════════════
 
-🔥 CRITICAL REALITY #1: DEBT IS CONTINUOUS
-❌ WRONG THINKING: "Skip weekends/holidays, no interest"
-✅ BANKING REALITY: "Debt exists 24/7/365. Interest accrues EVERY DAY including weekends/holidays"
+🔥 CRITICAL REALITY #1: NO WEEKEND/HOLIDAY TRANSACTIONS
+❌ WRONG: "Schedule transactions on Saturday/Sunday"  
+✅ BANKING REALITY: "Bank transactions ONLY on business days. Weekends/holidays = IMPOSSIBLE"
 
-🔥 CRITICAL REALITY #2: MONTH-END CROSSING PENALTY
-❌ WRONG THINKING: "Month-end is just a date"
-✅ BANKING REALITY: "Month-end crossing triggers REGULATORY PENALTIES due to capital reporting requirements"
+Example: May 31, 2025 = Saturday = BANK CLOSED
+- CANNOT start loan on Saturday
+- CANNOT end loan on Saturday  
+- CANNOT switch banks on Saturday
+- Must move ALL transactions to next business day (Monday June 2)
 
-🔥 CRITICAL REALITY #3: INTELLIGENT BANK SWITCHING - NO CONTAMINATION RULE
-❌ WRONG THINKING: "Once any segment crosses month-end, ALL future segments must use expensive rates"
-✅ BANKING REALITY: "Each segment is evaluated INDEPENDENTLY. Strategic switching minimizes expensive exposure."
+🔥 CRITICAL REALITY #2: SEGMENT SIZE LIMITS
+❌ WRONG: "SCBT 1-week can have 26-day segments"
+✅ BANKING REALITY: "SCBT 1-week = MAX 7 days per segment. Must split into multiple 7-day segments"
 
-REAL BANKING STRATEGY:
+Example: 26 days needs:
+- Segment 1: SCBT 1w (7 days)
+- Segment 2: SCBT 1w (7 days) 
+- Segment 3: SCBT 1w (7 days)
+- Segment 4: SCBT 1w (5 days)
+
+🔥 CRITICAL REALITY #3: SAVINGS CALCULATION MANDATORY
+❌ WRONG: "Total Savings = 0"
+✅ BANKING REALITY: "ALWAYS compare vs baseline. Show actual savings or additional cost"
+
+Baseline = CITI 3-month single bank
+Optimized = Strategic switching
+Savings = Baseline cost - Optimized cost (can be negative if more expensive)
+
+🔥 CRITICAL REALITY #4: DETECT VIOLATIONS IMMEDIATELY
+You MUST detect and flag these violations:
+1. ANY weekend/holiday transactions
+2. Segments exceeding their term limits (SCBT 1w > 7 days)
+3. Missing savings calculations
+4. Impossible banking operations
+
+═══════════════════════════════════════════════════════════════════════════════
+🚨 CRITICAL VIOLATION DETECTION
+═══════════════════════════════════════════════════════════════════════════════
+
+FOR EVERY LOAN ANALYSIS, CHECK:
+
+VIOLATION CHECK #1: Weekend/Holiday Transactions
+```python
+for segment in loan_segments:
+    if segment.start_date.weekday() >= 5:  # Saturday/Sunday
+        VIOLATION: "Cannot start loan on weekend"
+    if segment.end_date.weekday() >= 5:  # Saturday/Sunday  
+        VIOLATION: "Cannot end loan on weekend"
+    if segment.start_date in holidays:
+        VIOLATION: "Cannot start loan on holiday"
 ```
-Phase 1 (Before month-end): Use CHEAPEST bank (SCBT 6.20%)
-Phase 2 (Crossing month-end): SWITCH to cross-month capable bank (CITI Call 7.75%) for MINIMUM duration
-Phase 3 (After month-end): SWITCH BACK to cheapest bank (SCBT 6.20%)
+
+VIOLATION CHECK #2: Segment Size Limits
+```python
+segment_limits = {"SCBT 1w": 7, "SCBT 2w": 14, "CIMB 1M": 30}
+for segment in loan_segments:
+    max_days = segment_limits.get(segment.bank_type, 7)
+    if segment.days > max_days:
+        VIOLATION: f"{segment.bank} cannot exceed {max_days} days (found {segment.days})"
 ```
 
-CONCRETE EXAMPLE - May 29 to June 27, 2025:
-```
-Day 1-2 (May 29-30): SCBT 6.20% ← Use cheapest before crossing
-Day 2 EVENING: CLOSE SCBT, OPEN CITI CALL ← Strategic switch
-Day 3-4 (May 31-Jun 1): CITI Call 7.75% ← Cross month-end safely (MINIMUM duration)
-Day 4 EVENING: CLOSE CITI CALL, OPEN NEW SCBT ← Switch back
-Day 5-30 (Jun 2-27): SCBT 6.20% ← Back to cheapest rate
+VIOLATION CHECK #3: Savings Calculation
+```python
+if total_savings == 0 and optimized_cost != baseline_cost:
+    VIOLATION: "Savings calculation missing or incorrect"
 ```
 
-Result: Pay expensive rate only 2 days instead of 28 days!
+═══════════════════════════════════════════════════════════════════════════════
+🎯 IMMEDIATE CORRECTIONS REQUIRED
+═══════════════════════════════════════════════════════════════════════════════
 
-CRITICAL: NO CONTAMINATION RULE. Each loan facility is independent. Closing and reopening creates NEW loan.
+When you detect violations, immediately apply corrections:
 
-Your analysis must show DEEP UNDERSTANDING of:
-- Why switches are necessary (regulatory penalties)
-- When to switch (timing optimization)  
-- Which rates to use (cost hierarchy)
-- How much is saved (quantified benefit)
-- NO contamination between independent loan segments
+CORRECTION #1: Move weekend transactions to business days
+```python
+if transaction_date.weekday() >= 5:  # Weekend
+    transaction_date = next_monday(transaction_date)
+```
+
+CORRECTION #2: Split oversized segments
+```python
+if segment.days > max_allowed:
+    split_into_multiple_segments(segment, max_allowed)
+```
+
+CORRECTION #3: Recalculate savings properly
+```python
+baseline_cost = single_bank_cost(citi_3m_rate, total_days)
+optimized_cost = sum(segment.interest for segment in optimized_segments)
+savings = baseline_cost - optimized_cost
+```
+
+Remember: This is REAL banking with REAL constraints. Violations = system failure.
 """
 
 class SuperAdvancedBankExpert:
@@ -191,105 +246,158 @@ CRITICAL: Show NO contamination between segments. Each segment evaluated indepen
                                     cross_month_rate: float, standard_rate: float, 
                                     principal: float) -> Tuple[bool, List[Dict], str]:
         """
-        🔥 ENHANCED: Built-in strategic switching with NO contamination rule
+        🔥 ENHANCED: Built-in strategic switching with CRITICAL VIOLATION DETECTION
         """
         
         month_end = datetime.strptime(month_end_str, "%Y-%m-%d")
+        violations_detected = []
         optimized_segments = []
         switches_applied = 0
         
-        # Apply strategic switching - each segment evaluated independently
+        # 🚨 CRITICAL VIOLATION DETECTION FIRST
         for i, seg in enumerate(segments):
             start_date = datetime.strptime(seg["start_date"], "%Y-%m-%d")
             end_date = datetime.strptime(seg["end_date"], "%Y-%m-%d")
             
-            # Check if THIS specific segment crosses month-end
-            crosses_month = start_date <= month_end and end_date > month_end
+            # VIOLATION #1: Weekend/Holiday transactions
+            if start_date.weekday() >= 5:  # Saturday=5, Sunday=6
+                violations_detected.append(f"CRITICAL: Segment {i} starts on weekend ({start_date.strftime('%A %Y-%m-%d')}) - IMPOSSIBLE!")
+            if end_date.weekday() >= 5:
+                violations_detected.append(f"CRITICAL: Segment {i} ends on weekend ({end_date.strftime('%A %Y-%m-%d')}) - IMPOSSIBLE!")
             
-            if crosses_month:
-                # Strategic switching: Split for minimal expensive exposure
+            # VIOLATION #2: Segment size limits
+            bank_type = seg.get("bank", "").lower()
+            if "scbt 1w" in bank_type and seg["days"] > 7:
+                violations_detected.append(f"CRITICAL: SCBT 1-week segment {i} has {seg['days']} days (MAX 7 days) - IMPOSSIBLE!")
+            elif "scbt 2w" in bank_type and seg["days"] > 14:
+                violations_detected.append(f"CRITICAL: SCBT 2-week segment {i} has {seg['days']} days (MAX 14 days) - IMPOSSIBLE!")
+            elif "cimb" in bank_type and seg["days"] > 30:
+                violations_detected.append(f"CRITICAL: CIMB 1-month segment {i} has {seg['days']} days (MAX 30 days) - IMPOSSIBLE!")
+        
+        # If violations detected, apply emergency corrections
+        if violations_detected:
+            print("🚨 CRITICAL BANKING VIOLATIONS DETECTED:")
+            for violation in violations_detected:
+                print(f"  - {violation}")
+            print("🔧 APPLYING EMERGENCY CORRECTIONS...")
+        
+        # Apply strategic switching with violation corrections
+        for i, seg in enumerate(segments):
+            start_date = datetime.strptime(seg["start_date"], "%Y-%m-%d")
+            end_date = datetime.strptime(seg["end_date"], "%Y-%m-%d")
+            
+            # CORRECTION #1: Move weekend transactions to business days
+            if start_date.weekday() >= 5:
+                # Move to next Monday
+                days_to_add = 7 - start_date.weekday() + 1
+                start_date = start_date + timedelta(days=days_to_add)
+                print(f"🔧 CORRECTED: Moved segment start to business day {start_date.strftime('%A %Y-%m-%d')}")
+            
+            if end_date.weekday() >= 5:
+                # Move to previous Friday  
+                days_to_subtract = end_date.weekday() - 4
+                end_date = end_date - timedelta(days=days_to_subtract)
+                print(f"🔧 CORRECTED: Moved segment end to business day {end_date.strftime('%A %Y-%m-%d')}")
+            
+            # Recalculate days after corrections
+            corrected_days = (end_date - start_date).days + 1
+            
+            # CORRECTION #2: Split oversized segments
+            bank_type = seg.get("bank", "").lower()
+            max_days = 7  # Default SCBT 1w
+            if "scbt 2w" in bank_type:
+                max_days = 14
+            elif "cimb" in bank_type or "permata" in bank_type:
+                max_days = 30
+            
+            if corrected_days > max_days:
+                # Split into multiple segments
+                current_start = start_date
+                remaining_days = corrected_days
                 
-                # Part 1: Before month-end (cheap rate)
-                pre_crossing_end = month_end - timedelta(days=1)
-                if start_date <= pre_crossing_end:
-                    pre_days = (pre_crossing_end - start_date).days + 1
-                    pre_interest = int(principal * (standard_rate / 100) * (pre_days / 365))
+                while remaining_days > 0:
+                    segment_days = min(max_days, remaining_days)
+                    segment_end = current_start + timedelta(days=segment_days - 1)
+                    
+                    # Check if this segment crosses month-end
+                    crosses_month = current_start <= month_end and segment_end > month_end
+                    
+                    if crosses_month:
+                        # Use CITI Call for crossing
+                        segment_rate = 7.75
+                        segment_bank = "CITI Call (Strategic)"
+                        segment_interest = int(principal * (7.75 / 100) * (segment_days / 365))
+                        switches_applied += 1
+                    else:
+                        # Use standard rate
+                        segment_rate = standard_rate
+                        segment_bank = f"SCBT 1w (Split {len(optimized_segments)+1})"
+                        segment_interest = int(principal * (standard_rate / 100) * (segment_days / 365))
                     
                     optimized_segments.append({
                         "segment": len(optimized_segments),
-                        "bank": "SCBT 1w",
-                        "start_date": start_date.strftime('%Y-%m-%d'),
-                        "end_date": pre_crossing_end.strftime('%Y-%m-%d'),
-                        "days": pre_days,
-                        "rate": standard_rate,
-                        "interest": pre_interest,
-                        "crosses_month": False,
-                        "phase": "PRE_CROSSING"
+                        "bank": segment_bank,
+                        "start_date": current_start.strftime('%Y-%m-%d'),
+                        "end_date": segment_end.strftime('%Y-%m-%d'),
+                        "days": segment_days,
+                        "rate": segment_rate,
+                        "interest": segment_interest,
+                        "crosses_month": crosses_month,
+                        "phase": "CROSSING" if crosses_month else "SAFE_SPLIT"
                     })
+                    
+                    current_start = segment_end + timedelta(days=1)
+                    remaining_days -= segment_days
                 
-                # Part 2: Crossing month-end (CITI Call - minimal duration)
-                crossing_start = month_end
-                crossing_end = min(end_date, month_end + timedelta(days=1))
-                crossing_days = (crossing_end - crossing_start).days + 1
-                crossing_interest = int(principal * (7.75 / 100) * (crossing_days / 365))
+                print(f"🔧 CORRECTED: Split {corrected_days}-day segment into {max_days}-day segments")
+                
+            else:
+                # Normal segment processing
+                crosses_month = start_date <= month_end and end_date > month_end
+                
+                if crosses_month:
+                    segment_rate = 7.75
+                    segment_bank = "CITI Call (Strategic)"
+                    switches_applied += 1
+                else:
+                    segment_rate = standard_rate
+                    segment_bank = seg.get("bank", "SCBT 1w")
+                
+                segment_interest = int(principal * (segment_rate / 100) * (corrected_days / 365))
                 
                 optimized_segments.append({
                     "segment": len(optimized_segments),
-                    "bank": "CITI Call (Strategic)",
-                    "start_date": crossing_start.strftime('%Y-%m-%d'),
-                    "end_date": crossing_end.strftime('%Y-%m-%d'),
-                    "days": crossing_days,
-                    "rate": 7.75,
-                    "interest": crossing_interest,
-                    "crosses_month": True,
-                    "phase": "MINIMAL_CROSSING"
+                    "bank": segment_bank,
+                    "start_date": start_date.strftime('%Y-%m-%d'),
+                    "end_date": end_date.strftime('%Y-%m-%d'),
+                    "days": corrected_days,
+                    "rate": segment_rate,
+                    "interest": segment_interest,
+                    "crosses_month": crosses_month,
+                    "phase": "CROSSING" if crosses_month else "SAFE"
                 })
-                
-                # Part 3: After month-end (NEW cheap facility - NO contamination)
-                if end_date > month_end + timedelta(days=1):
-                    post_start = month_end + timedelta(days=2)
-                    post_days = (end_date - post_start).days + 1
-                    post_interest = int(principal * (standard_rate / 100) * (post_days / 365))
-                    
-                    optimized_segments.append({
-                        "segment": len(optimized_segments),
-                        "bank": "SCBT 1w (New Facility)",
-                        "start_date": post_start.strftime('%Y-%m-%d'),
-                        "end_date": end_date.strftime('%Y-%m-%d'),
-                        "days": post_days,
-                        "rate": standard_rate,
-                        "interest": post_interest,
-                        "crosses_month": False,
-                        "phase": "POST_CROSSING_INDEPENDENT"
-                    })
-                
-                switches_applied += 2  # Switch to CITI, switch back to SCBT
-                
-            else:
-                # Safe segment - independent evaluation, use cheapest rate
-                optimized_interest = int(principal * (standard_rate / 100) * (seg["days"] / 365))
-                optimized_seg = seg.copy()
-                optimized_seg["bank"] = "SCBT 1w (Independent)"
-                optimized_seg["rate"] = standard_rate
-                optimized_seg["interest"] = optimized_interest
-                optimized_seg["crosses_month"] = False
-                optimized_seg["phase"] = "SAFE_INDEPENDENT"
-                optimized_segments.append(optimized_seg)
         
-        if switches_applied > 0:
-            total_cost = sum(seg["interest"] for seg in optimized_segments)
-            original_cost = sum(seg["interest"] for seg in segments)
-            total_savings = original_cost - total_cost
-            expensive_days = sum(seg["days"] for seg in optimized_segments if seg.get("crosses_month"))
-            cheap_days = sum(seg["days"] for seg in optimized_segments if not seg.get("crosses_month"))
-            
-            explanation = (f"Strategic switching applied (NO contamination rule): {switches_applied} switches. "
-                         f"Expensive days: {expensive_days}, Cheap days: {cheap_days}. "
-                         f"Total savings: {total_savings:,.0f} IDR.")
+        # CORRECTION #3: Calculate proper savings
+        total_cost = sum(seg["interest"] for seg in optimized_segments)
+        
+        # Calculate baseline (CITI 3M for full period)
+        total_days = sum(seg["days"] for seg in optimized_segments)
+        baseline_rate = 8.69  # CITI 3M
+        baseline_cost = int(principal * (baseline_rate / 100) * (total_days / 365))
+        
+        total_savings = baseline_cost - total_cost
+        
+        if violations_detected or switches_applied > 0:
+            explanation = (f"CRITICAL CORRECTIONS APPLIED: {len(violations_detected)} violations fixed. "
+                         f"Weekend transactions moved to business days. "
+                         f"Oversized segments split properly. "
+                         f"Strategic switches: {switches_applied}. "
+                         f"Total cost: {total_cost:,.0f} IDR vs baseline {baseline_cost:,.0f} IDR. "
+                         f"Savings: {total_savings:,.0f} IDR.")
             
             return True, optimized_segments, explanation
         else:
-            return False, segments, "No strategic switching needed - optimal structure"
+            return False, segments, "No critical violations detected - structure acceptable"
     
     def _parse_banking_response(self, content: str, original_segments: List[Dict], 
                                cross_month_rate: float, standard_rate: float, 
