@@ -627,6 +627,15 @@ def main():
             savings = baseline_interest - best_strategy.total_interest
             savings_percent = (savings / baseline_interest * 100) if baseline_interest > 0 else 0
             
+            # Display operational warning if needed
+            if not best_strategy.operational_feasible:
+                st.markdown('<div class="operational-warning">', unsafe_allow_html=True)
+                st.warning("⚠️ **Operational Issues Detected:** This strategy has operational constraints that will be addressed by the Real Banking Expert.")
+                if best_strategy.citi_days > 7:
+                    st.write(f"• CITI Call usage: {best_strategy.citi_days} days (recommended max: 7 days)")
+                st.write("• The Real Banking Expert will optimize this structure for operational feasibility.")
+                st.markdown('</div>', unsafe_allow_html=True)
+            
             # Display correction notice if applied
             if corrected:
                 st.markdown('<div class="compliance-success">', unsafe_allow_html=True)
@@ -661,9 +670,18 @@ def main():
                     delta=format_percentage(-savings_percent) if savings_percent != 0 else None
                 )
             with col4:
-                operational_status = "✅ Feasible" if best_strategy.operational_feasible else "❌ Issues"
+                if best_strategy.operational_feasible and best_strategy.banking_compliant:
+                    operational_status = "✅ Fully Compliant"
+                    status_color = "normal"
+                elif best_strategy.banking_compliant:
+                    operational_status = "⚠️ Needs Optimization"
+                    status_color = "inverse"
+                else:
+                    operational_status = "🚨 Needs Correction"
+                    status_color = "inverse"
+                
                 st.metric(
-                    "Operational Status",
+                    "Banking Status",
                     operational_status,
                     delta=None
                 )
@@ -676,11 +694,26 @@ def main():
             with col1:
                 st.write(f"📅 SCBT Days: **{best_strategy.scbt_days}**")
             with col2:
-                citi_status = "⚠️" if best_strategy.citi_days > 5 else "✅"
+                if best_strategy.citi_days <= 5:
+                    citi_status = "✅"
+                elif best_strategy.citi_days <= 7:
+                    citi_status = "⚠️"
+                else:
+                    citi_status = "🚨"
                 st.write(f"🚨 CITI Days: **{best_strategy.citi_days}** {citi_status}")
             with col3:
-                compliance_status = "✅" if best_strategy.banking_compliant else "⚠️"
+                if best_strategy.banking_compliant and best_strategy.operational_feasible:
+                    compliance_status = "✅ Full"
+                elif best_strategy.banking_compliant:
+                    compliance_status = "⚠️ Partial"
+                else:
+                    compliance_status = "🚨 Issues"
                 st.write(f"📋 Compliance: **{compliance_status}**")
+            
+            # Add explanatory note
+            if not best_strategy.operational_feasible or not best_strategy.banking_compliant:
+                st.info("💡 **Note:** Real Banking Expert will optimize this structure to address any operational or compliance issues.")
+            
             st.markdown('</div>', unsafe_allow_html=True)
             
             # Tabs for different views

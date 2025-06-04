@@ -98,16 +98,17 @@ class LoanStrategy:
             self.is_valid = False
     
     def _validate_banking_operations(self):
-        """Validate real banking operational feasibility"""
+        """Validate real banking operational feasibility - more lenient"""
         if not self.segments:
             return
         
-        # Check for excessive CITI usage
-        if self.citi_days > 5:
+        # Check for excessive CITI usage (warning, not blocking)
+        if self.citi_days > 7:  # More lenient - 7 days instead of 5
             self.operational_feasible = False
             self.banking_compliant = False
         
-        # Check for weekend switching violations
+        # Check for weekend switching violations (warning, not blocking)
+        weekend_switches = 0
         for i in range(1, len(self.segments)):
             prev_seg = self.segments[i-1]
             curr_seg = self.segments[i]
@@ -116,7 +117,11 @@ class LoanStrategy:
                 # Check if switch happens on weekend
                 switch_date = prev_seg.end_date + timedelta(days=1)
                 if switch_date.weekday() >= 5:  # Weekend
-                    self.operational_feasible = False
+                    weekend_switches += 1
+        
+        # Allow some operational flexibility
+        if weekend_switches > 2:  # Only flag if excessive weekend switching
+            self.operational_feasible = False
 
 class RealBankingCalculator:
     """
@@ -488,9 +493,9 @@ class RealBankingCalculator:
                     if cimb_segments:
                         strategies.append(LoanStrategy('CIMB Real Banking', cimb_segments, is_optimized=True))
             
-            # Sort by total cost and operational feasibility
-            valid_strategies = [s for s in strategies if s.is_valid and s.operational_feasible and s.total_interest != float('inf')]
-            valid_strategies.sort(key=lambda x: (not x.banking_compliant, x.total_interest))
+            # Sort by total cost - prioritize compliant strategies but don't exclude operational issues
+            valid_strategies = [s for s in strategies if s.is_valid and s.total_interest != float('inf')]
+            valid_strategies.sort(key=lambda x: (not x.banking_compliant, not x.operational_feasible, x.total_interest))
             
             best_strategy = valid_strategies[0] if valid_strategies else None
             
