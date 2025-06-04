@@ -187,6 +187,27 @@ def main():
         include_permata = st.checkbox("Include Permata", value=False)
         permata_rate = st.number_input("Permata 1-Month Rate (%)", value=7.00, step=0.01, format="%.2f", disabled=not include_permata)
         
+        st.subheader("🤖 AI Analysis Status")
+        
+        # Check if OpenAI is available
+        try:
+            from openai_logic_helper import check_openai_availability
+            openai_available = check_openai_availability()
+            
+            if openai_available:
+                st.success("✅ OpenAI API available - AI analysis enabled")
+                st.info("💡 AI will automatically analyze loan calculations for logic errors")
+            else:
+                st.warning("⚠️ OpenAI API not configured")
+                st.info("🔧 To enable AI analysis, set `OPENAI_API_KEY` in Render environment variables")
+                
+        except ImportError:
+            st.error("❌ OpenAI helper module not available")
+            openai_available = False
+        except Exception as e:
+            st.error(f"❌ Error checking OpenAI: {str(e)}")
+            openai_available = False
+        
         # Calculate button
         calculate_button = st.button("🔄 Calculate Optimal Strategy", type="primary")
     
@@ -223,6 +244,18 @@ def main():
                 bank_rates=bank_rates,
                 include_banks=include_banks
             )
+            
+            # AI Analysis if available
+            ai_analysis = None
+            if openai_available and best_strategy:
+                try:
+                    from openai_logic_helper import analyze_loan_segments_with_ai
+                    ai_analysis = analyze_loan_segments_with_ai(
+                        best_strategy.segments, 
+                        month_end.strftime('%Y-%m-%d')
+                    )
+                except Exception as e:
+                    st.warning(f"AI analysis failed: {str(e)}")
         
         if best_strategy and best_strategy.is_valid:
             # Find baseline for comparison
@@ -269,7 +302,7 @@ def main():
             st.markdown('</div>', unsafe_allow_html=True)
             
             # Tabs for different views
-            tab1, tab2, tab3, tab4 = st.tabs(["📊 Timeline", "📋 Schedule", "🔍 Comparison", "📝 Logs"])
+            tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Timeline", "📋 Schedule", "🔍 Comparison", "📝 Logs", "🤖 AI Analysis"])
             
             with tab1:
                 st.subheader("Loan Timeline Visualization")
@@ -376,6 +409,44 @@ def main():
                             st.text(log)
                 else:
                     st.info("No calculation logs available")
+            
+            with tab5:
+                st.subheader("🤖 AI Logic Analysis")
+                if ai_analysis:
+                    if "error" in ai_analysis:
+                        st.error(f"AI Analysis Error: {ai_analysis['error']}")
+                    else:
+                        if "problematic_segments" in ai_analysis:
+                            st.write("**🚨 Problematic Segments Detected:**")
+                            for seg_idx in ai_analysis["problematic_segments"]:
+                                st.error(f"Segment {seg_idx}: Logic error detected")
+                        
+                        if "analysis" in ai_analysis:
+                            st.write("**📊 AI Analysis:**")
+                            if isinstance(ai_analysis["analysis"], dict):
+                                st.json(ai_analysis["analysis"])
+                            else:
+                                st.write(ai_analysis["analysis"])
+                        
+                        if "recommendations" in ai_analysis:
+                            st.write("**💡 AI Recommendations:**")
+                            st.write(ai_analysis["recommendations"])
+                        
+                        if "corrected_segments" in ai_analysis:
+                            st.write("**✅ AI-Suggested Corrections:**")
+                            st.json(ai_analysis["corrected_segments"])
+                else:
+                    if openai_available:
+                        st.info("🔄 AI analysis will run automatically when OpenAI API is configured")
+                    else:
+                        st.warning("🔑 Set OPENAI_API_KEY in Render environment variables to enable AI analysis")
+                        st.info("""
+                        **To enable AI analysis:**
+                        1. Go to your Render dashboard
+                        2. Navigate to your service settings
+                        3. Add environment variable: `OPENAI_API_KEY` = `your_api_key`
+                        4. Redeploy the service
+                        """)
         
         else:
             st.error("❌ Unable to calculate optimal strategy. Please check your inputs.")
