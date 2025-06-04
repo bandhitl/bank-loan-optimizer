@@ -263,12 +263,31 @@ class RealBankingCalculator:
         
         loan_end_date = start_date + timedelta(days=total_days - 1)
         
+        # 🏦 ENHANCED: Detect ALL month-ends in loan period
+        all_month_ends = self.get_month_end_dates(start_date, loan_end_date)
+        
+        # Use the primary month_end if no auto-detection found
+        if not all_month_ends:
+            # Check if the provided month_end is relevant
+            if start_date <= month_end and loan_end_date > month_end:
+                all_month_ends = [month_end]
+                self.log_message(f"Using provided month-end: {month_end.strftime('%Y-%m-%d')}", "INFO")
+        
+        # If still no month-ends, loan doesn't cross any month boundary
+        if not all_month_ends:
+            self.log_message(f"Loan period doesn't cross any month-end - using standard rates", "INFO")
+            # Create simple segments without month-end concerns
+            return self._create_simple_segments(start_date, total_days, segment_size, bank_name, bank_class, standard_rate, principal)
+        
+        # Use the first month-end for banking calendar calculations
+        primary_month_end = all_month_ends[0]
+        
         # 🏦 Real Banking Calendar Analysis
-        last_biz_day_before_month_end = self.get_last_business_day_before(month_end + timedelta(days=1))
-        first_biz_day_after_month_end = self.get_first_business_day_after(month_end)
+        last_biz_day_before_month_end = self.get_last_business_day_before(primary_month_end + timedelta(days=1))
+        first_biz_day_after_month_end = self.get_first_business_day_after(primary_month_end)
         
         self.log_message(f"🏦 REAL BANKING CALENDAR: {strategy_name}", "INFO")
-        self.log_message(f"Month-end: {month_end.strftime('%Y-%m-%d (%A)')}", "INFO")
+        self.log_message(f"Primary Month-end: {primary_month_end.strftime('%Y-%m-%d (%A)')}", "INFO")
         self.log_message(f"Last business day before: {last_biz_day_before_month_end.strftime('%Y-%m-%d (%A)')}", "INFO")
         self.log_message(f"First business day after: {first_biz_day_after_month_end.strftime('%Y-%m-%d (%A)')}", "INFO")
         
@@ -284,13 +303,21 @@ class RealBankingCalculator:
             
             # 🏦 REAL BANKING DECISION LOGIC
             
-            # Check if current segment would cross month-end
+            # Check if current segment would cross ANY month-end
             segment_days = min(segment_size, remaining_days)
             proposed_end_date = current_date + timedelta(days=segment_days - 1)
-            crosses_month = current_date <= month_end and proposed_end_date > month_end
+            
+            # Check against ALL detected month-ends
+            crosses_any_month = False
+            crossing_month_end = None
+            for month_end_date in all_month_ends:
+                if current_date <= month_end_date and proposed_end_date > month_end_date:
+                    crosses_any_month = True
+                    crossing_month_end = month_end_date
+                    break
             
             # 🏦 Strategy 1: Avoid month-end crossing completely
-            if crosses_month and current_date <= last_biz_day_before_month_end:
+            if crosses_any_month and current_date <= last_biz_day_before_month_end:
                 # 🚨 CRITICAL: Must switch BEFORE the last business day to avoid being stuck
                 
                 # Calculate safe switch date (day before last business day if possible)
@@ -349,7 +376,7 @@ class RealBankingCalculator:
                 continue
             
             # 🏦 Strategy 2: Normal segment (no month-end crossing)
-            elif not crosses_month:
+            elif not crosses_any_month:
                 # Safe segment - use standard rate
                 final_days = min(segment_days, remaining_days)
                 final_end_date = current_date + timedelta(days=final_days - 1)
@@ -414,6 +441,36 @@ class RealBankingCalculator:
             self.log_message(f"  • {bank_name}: {scbt_days} days", "INFO")
             self.log_message(f"  • CITI Emergency: {citi_days} days", "INFO")
             self.log_message(f"  • Operational feasibility: {'✅ FEASIBLE' if citi_days <= 5 else '❌ EXCESSIVE CITI'}", "INFO")
+        
+        return segments
+    
+    def _create_simple_segments(self, start_date: datetime, total_days: int, segment_size: int, 
+                               bank_name: str, bank_class: str, standard_rate: float, principal: float) -> List[LoanSegment]:
+        """Create simple segments when no month-end crossing is detected"""
+        segments = []
+        remaining_days = total_days
+        current_date = start_date
+        
+        while remaining_days > 0:
+            segment_days = min(segment_size, remaining_days)
+            end_date = current_date + timedelta(days=segment_days - 1)
+            
+            segment = LoanSegment(
+                bank=bank_name,
+                bank_class=bank_class,
+                rate=standard_rate,
+                days=segment_days,
+                start_date=current_date,
+                end_date=end_date,
+                interest=self.calculate_interest(principal, standard_rate, segment_days),
+                crosses_month=False
+            )
+            segment.banking_logic = "Standard segment - no month-end concerns"
+            segment.compliance_status = "FULLY_COMPLIANT"
+            segments.append(segment)
+            
+            remaining_days -= segment_days
+            current_date = end_date + timedelta(days=1)
         
         return segments
     
