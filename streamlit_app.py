@@ -386,6 +386,49 @@ def display_real_banking_expert_status():
     
     return expert_available
 
+def safe_detect_month_ends(start_date: datetime, end_date: datetime) -> list:
+    """Safely detect month-end crossings with comprehensive error handling"""
+    try:
+        month_ends = []
+        
+        if not isinstance(start_date, datetime) or not isinstance(end_date, datetime):
+            return []
+        
+        if start_date >= end_date:
+            return []
+        
+        current_month = start_date.replace(day=1)
+        safety_counter = 0
+        max_iterations = 12  # Maximum 1 year
+        
+        while current_month <= end_date + timedelta(days=31) and safety_counter < max_iterations:
+            safety_counter += 1
+            
+            try:
+                # Get last day of current month
+                if current_month.month == 12:
+                    next_month = current_month.replace(year=current_month.year + 1, month=1)
+                else:
+                    next_month = current_month.replace(month=current_month.month + 1)
+                
+                last_day_of_month = next_month - timedelta(days=1)
+                
+                # Check if loan crosses this month-end
+                if start_date <= last_day_of_month and end_date > last_day_of_month:
+                    month_ends.append(last_day_of_month)
+                
+                current_month = next_month
+                
+            except Exception as e:
+                st.warning(f"Error processing month {current_month.strftime('%Y-%m')}: {e}")
+                break
+        
+        return sorted(month_ends)
+        
+    except Exception as e:
+        st.error(f"Critical error in month-end detection: {e}")
+        return []
+
 def main():
     # Header
     st.markdown('<h1 class="main-header">🏦 Real Banking Loan Optimizer</h1>', unsafe_allow_html=True)
@@ -430,67 +473,33 @@ def main():
                 help="Loan start date"
             )
         with col2:
-            total_days = st.number_input(
-                "Loan Period (days)",
+            total_days_display = st.number_input(
+                "Days (Display)",
                 min_value=1,
                 max_value=90,
                 value=30,
                 step=1,
-                help="Enter the total number of days for the loan"
+                help="Total loan period in days",
+                disabled=True
             )
         
-        # Auto-calculate month-end
+        # Auto-calculate month-end and show loan period info
         if start_date and total_days:
             loan_end_date = start_date + timedelta(days=total_days - 1)
             
             # Show calculated loan period
             st.info(f"📅 **Loan Period:** {start_date.strftime('%Y-%m-%d')} → {loan_end_date.strftime('%Y-%m-%d')}")
             
-def safe_detect_month_ends(start_date: datetime, end_date: datetime) -> list:
-    """Safely detect month-end crossings with comprehensive error handling"""
-    try:
-        month_ends = []
-        
-        if not isinstance(start_date, datetime) or not isinstance(end_date, datetime):
-            return []
-        
-        if start_date >= end_date:
-            return []
-        
-        current_month = start_date.replace(day=1)
-        safety_counter = 0
-        max_iterations = 12  # Maximum 1 year
-        
-        while current_month <= end_date + timedelta(days=31) and safety_counter < max_iterations:
-            safety_counter += 1
-            
+            # Auto-detect month-ends in loan period with safe error handling
             try:
-                # Get last day of current month
-                if current_month.month == 12:
-                    next_month = current_month.replace(year=current_month.year + 1, month=1)
-                else:
-                    next_month = current_month.replace(month=current_month.month + 1)
+                start_datetime = datetime.combine(start_date, datetime.min.time())
+                loan_end_datetime = start_datetime + timedelta(days=total_days - 1)
                 
-                last_day_of_month = next_month - timedelta(days=1)
+                # Use safe detection function
+                detected_month_ends = safe_detect_month_ends(start_datetime, loan_end_datetime)
                 
-                # Check if loan crosses this month-end
-                if start_date <= last_day_of_month and end_date > last_day_of_month:
-                    month_ends.append(last_day_of_month)
-                
-                current_month = next_month
-                
-            except Exception as e:
-                st.warning(f"Error processing month {current_month.strftime('%Y-%m')}: {e}")
-                break
-        
-        return sorted(month_ends)
-        
-    except Exception as e:
-        st.error(f"Critical error in month-end detection: {e}")
-        return []
-                
-                if month_ends:
-                    month_end_strs = [me.strftime('%Y-%m-%d (%b)') for me in month_ends]
+                if detected_month_ends:
+                    month_end_strs = [me.strftime('%Y-%m-%d (%b)') for me in detected_month_ends]
                     st.warning(f"🚨 **Month-end crossings detected:** {', '.join(month_end_strs)}")
                     st.write("💡 System will automatically apply month-end penalties and tactical switching")
                 else:
