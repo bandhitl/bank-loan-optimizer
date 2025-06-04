@@ -1,463 +1,301 @@
-import os
-import json
-from datetime import datetime, timedelta
-from typing import List, Dict, Any, Tuple
-
-class SuperAdvancedBankExpert:
-    def __init__(self):
-        """
-        Super Advanced Bank Expert using o1-mini for complex reasoning
-        """
-        api_key = os.getenv('OPENAI_API_KEY')
-        if api_key:
-            try:
-                from openai import OpenAI
-                self.client = OpenAI(api_key=api_key)
-                self.api_available = True
-            except ImportError:
-                # Fallback for older openai versions
-                import openai
-                openai.api_key = api_key
-                self.client = openai
-                self.api_available = True
-        else:
-            self.api_available = False
+def _create_ultra_detailed_banking_prompt(self, segments: List[Dict], month_end: str, 
+                                        cross_month_rate: float, standard_rate: float, principal: float) -> str:
+    """🏦 ENHANCED: Banking-aware prompt with domain expertise"""
     
-    def is_available(self) -> bool:
-        """Check if OpenAI API is available"""
-        return self.api_available
-    
-    def ultra_strict_validation(self, segments: List[Dict], month_end: str, 
-                              cross_month_rate: float, standard_rate: float,
-                              principal: float) -> Tuple[bool, List[Dict], str]:
-        """
-        🔥 FIXED: Ultra-strict validation with USER-PROVIDED rates
-        """
-        
-        if not self.api_available:
-            return False, segments, "Super Advanced Bank Expert not available"
-        
-        # Create ultra-detailed prompt with ACTUAL user rates
-        ultra_prompt = self._create_ultra_detailed_prompt(segments, month_end, cross_month_rate, standard_rate, principal)
-        
-        try:
-            # Try o1-mini first (best reasoning model)
-            try:
-                if hasattr(self.client, 'chat'):
-                    response = self.client.chat.completions.create(
-                        model="o1-mini",  # 🔥 Use o1-mini for complex reasoning
-                        messages=[
-                            {"role": "user", "content": ultra_prompt}
-                        ],
-                        temperature=1.0  # o1 models use different temperature scale
-                    )
-                    content = response.choices[0].message.content.strip()
-                else:
-                    # Fallback for old client
-                    response = self.client.ChatCompletion.create(
-                        model="o1-mini",
-                        messages=[
-                            {"role": "user", "content": ultra_prompt}
-                        ],
-                        temperature=1.0
-                    )
-                    content = response.choices[0].message.content.strip()
-                
-                return self._parse_o1_response(content, segments, cross_month_rate, standard_rate, principal)
-                
-            except Exception as e:
-                print(f"o1-mini failed: {e}, trying gpt-4o...")
-                
-                # Fallback to gpt-4o (second best)
-                if hasattr(self.client, 'chat'):
-                    response = self.client.chat.completions.create(
-                        model="gpt-4o",
-                        messages=[
-                            {"role": "system", "content": "You are an ultra-precise bank treasury expert. You MUST detect and fix ANY segment that crosses month-end with wrong rate."},
-                            {"role": "user", "content": ultra_prompt}
-                        ],
-                        temperature=0.0
-                    )
-                    content = response.choices[0].message.content.strip()
-                else:
-                    response = self.client.ChatCompletion.create(
-                        model="gpt-4o",
-                        messages=[
-                            {"role": "system", "content": "You are an ultra-precise bank treasury expert. You MUST detect and fix ANY segment that crosses month-end with wrong rate."},
-                            {"role": "user", "content": ultra_prompt}
-                        ],
-                        temperature=0.0
-                    )
-                    content = response.choices[0].message.content.strip()
-                
-                return self._parse_o1_response(content, segments, cross_month_rate, standard_rate, principal)
-                
-        except Exception as e:
-            return False, segments, f"Super Advanced Expert failed: {str(e)}"
-    
-    def _create_ultra_detailed_prompt(self, segments: List[Dict], month_end: str, 
-                                    cross_month_rate: float, standard_rate: float, principal: float) -> str:
-        """🔥 FIXED: Create prompt with ACTUAL user-provided rates"""
-        
-        return f"""
-🏦 ULTRA-CRITICAL BANK TREASURY AUDIT
+    return f"""
+🏦 BANKING TREASURY EXPERT SYSTEM - CRITICAL LOAN AUDIT
 
-You are a WORLD-CLASS BANK TREASURY EXPERT performing a CRITICAL AUDIT to prevent MILLIONS in losses.
+You are a SENIOR BANK TREASURY MANAGER with 20+ years experience in corporate lending and month-end risk management.
 
-🚨 ABSOLUTE BUSINESS RULES (USER-PROVIDED RATES):
-1. Month-end cutoff: {month_end}
-2. Standard rate: {standard_rate}% (ONLY for segments that DO NOT cross month-end)
-3. Cross-month penalty: {cross_month_rate}% (EXPENSIVE - use when crossing month-end)
-4. CITI Call rate: 7.75% (Alternative to penalty - often cheaper)
+📚 BANKING DOMAIN KNOWLEDGE:
 
-📊 CRITICAL LOAN BUSINESS LOGIC:
-- If a loan crosses month-end ONCE, ALL subsequent segments must use cross-month rates
-- Standard rate {standard_rate}% is FORBIDDEN for any segment after month-end crossing
-- Segments starting after {month_end} CANNOT use {standard_rate}% if loan crossed boundary
+🏛️ CORE BANKING PRINCIPLES:
+1. **Month-End Risk**: Banks impose PENALTY RATES when loans cross month-end boundaries due to:
+   - Capital adequacy reporting requirements (Basel III)
+   - Liquidity coverage ratio calculations 
+   - Monthly balance sheet consolidation
+   - Regulatory reporting deadlines
 
-📊 CURRENT LOAN SEGMENTS TO AUDIT:
+2. **Rate Hierarchy**: Banks price risk as follows:
+   - Standard Term Rate ({standard_rate}%): LOWEST cost, but FORBIDDEN for cross-month
+   - Call Loan Rate (7.75%): MIDDLE cost, can be used anytime (flexibility premium)
+   - Cross-Month Penalty ({cross_month_rate}%): HIGHEST cost, last resort
+
+3. **Business Logic**: Once ANY segment crosses month-end:
+   - ALL subsequent segments inherit cross-month risk
+   - Cannot return to standard rates until next monthly cycle
+   - Bank treats entire loan as "month-end exposed"
+
+💼 REAL BANKING EXAMPLE:
+Company needs 30-day loan starting May 20, 2025:
+- Days 1-12 (May 20-31): ✅ Can use SCBT 6.20% (within month)
+- Days 13-14 (Jun 1-2): 🚨 MUST use CITI Call 7.75% (crosses May-end)
+- Days 15-30 (Jun 3-18): 🚨 MUST continue CITI Call 7.75% (loan already crossed)
+
+❌ VIOLATION: Using 6.20% for Jun 1-2 period (crosses month-end)
+❌ VIOLATION: Using 6.20% for Jun 3+ period (post-crossing in exposed loan)
+
+🔍 AUDIT TARGET: {len(segments)} LOAN SEGMENTS
+
+📊 CURRENT LOAN STRUCTURE:
+Month-End Cutoff: {month_end}
+Principal: {principal:,} IDR  
+Standard Rate: {standard_rate}% (SCBT term rate)
+Call Rate: 7.75% (CITI flexible rate)
+Penalty Rate: {cross_month_rate}% (Cross-month punishment)
+
 {json.dumps(segments, indent=2)}
 
-🔍 ULTRA-PRECISE DETECTION ALGORITHM:
+🎯 CRITICAL DETECTION ALGORITHM:
 
-STEP 1: Individual Segment Cross-Month Detection
-For EACH segment:
-- start_date = segment start date
-- end_date = segment end date  
-- month_end_cutoff = {month_end}
-- CROSSES = (start_date <= {month_end}) AND (end_date > {month_end})
+STEP 1: Month-End Boundary Analysis
+FOR each segment:
+    start = segment["start_date"] 
+    end = segment["end_date"]
+    month_cutoff = "{month_end}"
+    
+    crosses_boundary = (start <= month_cutoff) AND (end > month_cutoff)
+    
+    IF crosses_boundary AND rate == {standard_rate}%:
+        🚨 TYPE-1 VIOLATION: "Cross-month segment uses forbidden standard rate"
 
-STEP 2: Loan-Level Cross-Month Detection
-- Check if ANY segment in the loan crosses month-end
-- If YES, then ALL segments starting after {month_end} MUST use cross-month rates
+STEP 2: Post-Crossing Contamination Check  
+loan_ever_crossed = ANY segment crosses month-end
+FOR each segment starting after {month_end}:
+    IF loan_ever_crossed AND rate == {standard_rate}%:
+        🚨 TYPE-2 VIOLATION: "Post-crossing segment uses contaminated standard rate"
 
-STEP 3: Violation Detection
-For each segment:
-- If CROSSES = TRUE and rate = {standard_rate}% → 🚨 VIOLATION TYPE 1
-- If segment starts after {month_end} and rate = {standard_rate}% and loan crossed → 🚨 VIOLATION TYPE 2
+STEP 3: Banking-Optimal Corrections
+FOR each violation:
+    option_A = CITI_Call_Rate = 7.75%
+    option_B = Cross_Month_Penalty = {cross_month_rate}%
+    
+    choose_cheapest = min(option_A, option_B)
+    
+    new_interest = Principal × (chosen_rate/100) × (days/365)
 
-🎯 REQUIRED OUTPUT FORMAT (JSON ONLY):
+🏦 REQUIRED BANKING OUTPUT (JSON ONLY):
 
 {{
-  "audit_result": "PASS/FAIL",
+  "banking_audit_result": "PASS/FAIL",
+  "month_end_cutoff": "{month_end}",
   "loan_crosses_month_boundary": true/false,
-  "critical_violations_found": [
+  "banking_violations": [
     {{
-      "segment_index": 3,
-      "segment_bank": "SCBT 1w (Gap)",
-      "start_date": "2025-05-31",
-      "end_date": "2025-06-01",
-      "days": 2,
-      "current_rate": {standard_rate},
-      "violation_type": "CROSSES_MONTH_WITH_STANDARD_RATE",
-      "crosses_month_end": true,
-      "current_interest": 12909589,
-      "correct_rate": 7.75,
-      "correct_interest": 16136986,
-      "financial_impact": 3227397
+      "segment_index": 2,
+      "violation_type": "CROSS_MONTH_STANDARD_RATE",
+      "segment_details": {{
+        "bank": "SCBT 1w",
+        "start_date": "2025-05-30",
+        "end_date": "2025-06-02", 
+        "days": 4,
+        "current_rate": {standard_rate},
+        "crosses_month_end": true
+      }},
+      "banking_impact": {{
+        "current_interest": 25671233,
+        "regulatory_risk": "Month-end exposure with forbidden rate",
+        "correct_rate": 7.75,
+        "correct_interest": 32012329,
+        "additional_cost": 6341096
+      }}
     }}
   ],
-  "corrected_segments": [
+  "corrected_loan_structure": [
     {{
-      "index": 0,
+      "segment": 0,
       "bank": "SCBT 1w",
-      "start_date": "2025-05-22",
-      "end_date": "2025-05-28",
+      "period": "2025-05-22 to 2025-05-29",
+      "days": 8,
       "rate": {standard_rate},
-      "days": 7,
-      "crosses_month": false,
-      "interest": 45183562
+      "interest": 45183562,
+      "banking_status": "SAFE_INTRA_MONTH",
+      "crosses_month": false
     }},
     {{
-      "index": 3,
-      "bank": "CITI Call",
-      "start_date": "2025-05-31",
-      "end_date": "2025-06-01",
+      "segment": 1,
+      "bank": "CITI Call", 
+      "period": "2025-05-30 to 2025-06-02",
+      "days": 4,
       "rate": 7.75,
-      "days": 2,
-      "crosses_month": true,
-      "interest": 16136986
+      "interest": 32012329,
+      "banking_status": "CROSS_MONTH_COMPLIANT",
+      "crosses_month": true
     }}
   ],
-  "total_violations": 1,
-  "total_financial_impact": 3227397,
-  "expert_certification": "All cross-month violations fixed with appropriate rates"
+  "banking_summary": {{
+    "total_violations_fixed": 1,
+    "total_additional_cost": 6341096,
+    "compliance_status": "MONTH_END_COMPLIANT",
+    "risk_mitigation": "Cross-month exposure properly priced"
+  }},
+  "treasury_certification": "All segments comply with month-end banking regulations and risk pricing policies"
 }}
 
-🚨 CORRECTION RULES:
-1. For segments crossing month-end: Change to CITI Call (7.75%) or penalty ({cross_month_rate}%)
-2. Choose cheaper option: min(7.75%, {cross_month_rate}%)
-3. For post-month segments in crossed loans: Use cross-month rates
-4. Recalculate interest: Principal × (Rate/100) × (Days/365)
+🏦 BANKING CORRECTION RULES:
 
-Principal: {principal:,} IDR
-Month-end: {month_end}
-Standard rate: {standard_rate}%
-Cross-month penalty: {cross_month_rate}%
+1. **Cross-Month Segments**: 
+   - NEVER use standard rate {standard_rate}%
+   - Choose cheapest: min(CITI_Call_7.75%, Penalty_{cross_month_rate}%)
+   - Apply proper regulatory risk pricing
 
-⚡ ULTRA-CRITICAL DETECTION:
-- Segment "2025-05-31 → 2025-06-01" DEFINITELY crosses {month_end}
-- ANY rate = {standard_rate}% for crossing segments is VIOLATION
-- Post-month segments with {standard_rate}% in crossed loans is VIOLATION
+2. **Post-Crossing Segments**:
+   - If loan EVER crossed month-end, ALL future segments are "contaminated"
+   - Cannot use standard rate until new monthly cycle
+   - Must use cross-month pricing
 
-AUDIT NOW. PREVENT FINANCIAL LOSSES.
+3. **Interest Recalculation**:
+   - Formula: Principal × (Rate/100) × (Days/365)  
+   - Round to nearest IDR (no decimals)
+   - Ensure compliance with Basel III guidelines
+
+4. **Risk Classification**:
+   - SAFE_INTRA_MONTH: Within single month boundary
+   - CROSS_MONTH_COMPLIANT: Crosses month-end with proper pricing
+   - POST_CROSSING_COMPLIANT: After month-end with proper pricing
+
+💡 BANKING INSIGHT:
+Month-end crossing isn't just about dates - it's about REGULATORY COMPLIANCE and RISK PRICING.
+Standard rates are PROHIBITED because they don't reflect the true cost of month-end liquidity risk.
+
+PRINCIPAL: {principal:,} IDR
+MONTH-END: {month_end}
+STANDARD_RATE: {standard_rate}%
+CALL_RATE: 7.75%  
+PENALTY_RATE: {cross_month_rate}%
+
+⚡ DETECT AND FIX ALL BANKING VIOLATIONS NOW ⚡
 """
-    
-    def _parse_o1_response(self, content: str, original_segments: List[Dict], 
-                          cross_month_rate: float, standard_rate: float, principal: float) -> Tuple[bool, List[Dict], str]:
-        """🔥 ENHANCED: Parse o1-mini response with validation"""
-        
-        try:
-            # Extract JSON from response
-            start_idx = content.find('{')
-            end_idx = content.rfind('}') + 1
-            
-            if start_idx == -1 or end_idx == 0:
-                return False, original_segments, "No JSON found in o1 response"
-            
-            json_str = content[start_idx:end_idx]
-            result = json.loads(json_str)
-            
-            # Validate the response
-            violations = result.get("critical_violations_found", [])
-            corrected_segments = result.get("corrected_segments", [])
-            
-            if result.get("audit_result") == "FAIL" and violations and corrected_segments:
-                financial_impact = result.get("total_financial_impact", 0)
-                
-                # Additional validation: ensure no violations remain in corrected segments
-                remaining_violations = self._validate_corrected_segments(corrected_segments, standard_rate, cross_month_rate)
-                
-                if remaining_violations:
-                    explanation = f"o1-mini detected {len(violations)} violations but corrections still have issues: {remaining_violations}"
-                    return False, original_segments, explanation
-                else:
-                    explanation = f"o1-mini detected {len(violations)} critical violations, financial impact: {financial_impact:,} IDR. Applied verified corrections."
-                    return True, corrected_segments, explanation
-            else:
-                return False, original_segments, "o1-mini audit passed - no violations found"
-                
-        except json.JSONDecodeError as e:
-            # If JSON parsing fails, manual detection
-            if "VIOLATION" in content.upper() or "FAIL" in content.upper():
-                # Manual correction as fallback
-                manual_corrections = self._manual_correction_fallback(original_segments, standard_rate, cross_month_rate, principal)
-                if manual_corrections[0]:
-                    return manual_corrections
-                else:
-                    return False, original_segments, f"o1-mini detected issues but parsing failed: {str(e)}"
-            else:
-                return False, original_segments, f"o1-mini response parsing failed: {str(e)}"
-        
-        except Exception as e:
-            return False, original_segments, f"o1-mini processing error: {str(e)}"
-    
-    def _validate_corrected_segments(self, corrected_segments: List[Dict], standard_rate: float, cross_month_rate: float) -> List[str]:
-        """Validate that corrected segments don't have remaining violations"""
-        violations = []
-        month_end = datetime.strptime("2025-05-31", "%Y-%m-%d")  # Convert to datetime for comparison
-        
-        # Check if any segment crosses month-end
-        loan_crosses = False
-        for seg in corrected_segments:
-            start_date = datetime.strptime(seg["start_date"], "%Y-%m-%d")
-            end_date = datetime.strptime(seg["end_date"], "%Y-%m-%d")
-            if start_date <= month_end and end_date > month_end:
-                loan_crosses = True
-                break
-        
-        for i, seg in enumerate(corrected_segments):
-            start_date = datetime.strptime(seg["start_date"], "%Y-%m-%d")
-            end_date = datetime.strptime(seg["end_date"], "%Y-%m-%d")
-            rate = seg["rate"]
-            
-            # Check individual cross-month violations
-            if start_date <= month_end and end_date > month_end and rate == standard_rate:
-                violations.append(f"Segment {i} still crosses month-end with standard rate {rate}%")
-            
-            # Check post-month violations in crossed loans
-            if loan_crosses and start_date > month_end and rate == standard_rate:
-                violations.append(f"Segment {i} post-month uses standard rate {rate}% in crossed loan")
-        
-        return violations
-    
-    def _manual_correction_fallback(self, segments: List[Dict], standard_rate: float, cross_month_rate: float, principal: float) -> Tuple[bool, List[Dict], str]:
-        """Manual correction fallback when AI parsing fails"""
-        month_end = datetime.strptime("2025-05-31", "%Y-%m-%d")
-        corrected_segments = []
-        corrections_made = 0
-        
-        # Check if loan crosses month-end
-        loan_crosses = False
-        for seg in segments:
-            start_date = datetime.strptime(seg["start_date"], "%Y-%m-%d")
-            end_date = datetime.strptime(seg["end_date"], "%Y-%m-%d")
-            if start_date <= month_end and end_date > month_end:
-                loan_crosses = True
-                break
-        
-        for seg in segments:
-            start_date = datetime.strptime(seg["start_date"], "%Y-%m-%d")
-            end_date = datetime.strptime(seg["end_date"], "%Y-%m-%d")
-            
-            # Check if correction needed
-            needs_correction = False
-            
-            # Individual cross-month check
-            if start_date <= month_end and end_date > month_end and seg["rate"] == standard_rate:
-                needs_correction = True
-            
-            # Post-month check in crossed loans
-            if loan_crosses and start_date > month_end and seg["rate"] == standard_rate:
-                needs_correction = True
-            
-            if needs_correction:
-                # Apply correction
-                corrected_seg = seg.copy()
-                corrected_seg["bank"] = "CITI Call"
-                corrected_seg["rate"] = 7.75
-                corrected_seg["crosses_month"] = True
-                corrected_seg["interest"] = int(principal * (7.75 / 100) * (seg["days"] / 365))
-                corrections_made += 1
-            else:
-                corrected_seg = seg.copy()
-            
-            corrected_segments.append(corrected_seg)
-        
-        if corrections_made > 0:
-            return True, corrected_segments, f"Manual fallback correction: Fixed {corrections_made} segments"
-        else:
-            return False, segments, "Manual fallback: No corrections needed"
 
-def apply_super_advanced_corrections(original_segments, principal: float, month_end_str: str, 
-                                   cross_month_rate: float = 9.20, standard_rate: float = 6.20):
-    """
-    🔥 FIXED: Apply corrections with USER-PROVIDED rates
-    """
+def _parse_banking_response(self, content: str, original_segments: List[Dict], 
+                           cross_month_rate: float, standard_rate: float, principal: float, month_end_str: str) -> Tuple[bool, List[Dict], str]:
+    """🏦 ENHANCED: Banking-aware response parser with domain validation"""
     
-    expert = SuperAdvancedBankExpert()
-    
-    if not expert.is_available():
-        return False, original_segments, "Super Advanced Bank Expert not available - set OPENAI_API_KEY"
-    
-    # Convert segments to dict format for analysis
-    segment_dicts = []
-    for i, seg in enumerate(original_segments):
-        segment_dicts.append({
-            "index": i,
-            "bank": seg.bank,
-            "start_date": seg.start_date.strftime('%Y-%m-%d'),
-            "end_date": seg.end_date.strftime('%Y-%m-%d'),
-            "rate": seg.rate,
-            "days": seg.days,
-            "crosses_month": seg.crosses_month,
-            "interest": seg.interest
-        })
-    
-    # Apply ultra-strict validation with USER rates
-    corrected, corrected_data, explanation = expert.ultra_strict_validation(
-        segment_dicts, 
-        month_end_str, 
-        cross_month_rate=cross_month_rate,  # 🔥 Use user-provided rate
-        standard_rate=standard_rate,        # 🔥 Use user-provided rate
-        principal=principal
-    )
-    
-    if not corrected:
-        return False, original_segments, explanation
-    
-    # Convert corrected data back to LoanSegment objects
     try:
-        from loan_calculator import LoanSegment
+        # Extract JSON from response
+        start_idx = content.find('{')
+        end_idx = content.rfind('}') + 1
         
-        corrected_segments = []
-        for seg_data in corrected_data:
-            corrected_segments.append(LoanSegment(
-                bank=seg_data["bank"],
-                bank_class="o1_corrected",
-                rate=seg_data["rate"],
-                days=seg_data["days"],
-                start_date=datetime.strptime(seg_data["start_date"], '%Y-%m-%d'),
-                end_date=datetime.strptime(seg_data["end_date"], '%Y-%m-%d'),
-                interest=seg_data["interest"],
-                crosses_month=seg_data["crosses_month"]
-            ))
+        if start_idx == -1 or end_idx == 0:
+            return False, original_segments, "Banking expert response missing JSON structure"
         
-        return True, corrected_segments, f"o1-mini Ultra Expert: {explanation}"
+        json_str = content[start_idx:end_idx]
+        result = json.loads(json_str)
         
+        # Banking-specific validation
+        audit_result = result.get("banking_audit_result", "UNKNOWN")
+        violations = result.get("banking_violations", [])
+        corrected_structure = result.get("corrected_loan_structure", [])
+        
+        if audit_result == "FAIL" and violations and corrected_structure:
+            # Validate banking compliance of corrections
+            banking_validation = self._validate_banking_compliance(corrected_structure, standard_rate, cross_month_rate, month_end_str)
+            
+            if banking_validation["compliant"]:
+                total_cost = sum(seg.get("interest", 0) for seg in corrected_structure)
+                violation_count = len(violations)
+                
+                explanation = (f"Banking Expert: Fixed {violation_count} regulatory violations. "
+                             f"Loan now compliant with month-end risk policies. "
+                             f"Total cost: {total_cost:,.0f} IDR")
+                
+                return True, corrected_structure, explanation
+            else:
+                return False, original_segments, f"Banking validation failed: {banking_validation['issues']}"
+        else:
+            return False, original_segments, "Banking audit passed - no regulatory violations found"
+            
+    except json.JSONDecodeError as e:
+        # Enhanced fallback with banking logic
+        if any(keyword in content.upper() for keyword in ["VIOLATION", "CROSS-MONTH", "MONTH-END", "REGULATORY"]):
+            banking_fix = self._emergency_banking_correction(original_segments, standard_rate, cross_month_rate, principal, month_end_str)
+            return banking_fix
+        else:
+            return False, original_segments, f"Banking expert analysis parsing failed: {str(e)}"
+    
     except Exception as e:
-        return False, original_segments, f"Failed to apply o1 corrections: {str(e)}"
+        return False, original_segments, f"Banking expert system error: {str(e)}"
 
-def check_openai_availability():
-    """Check if OpenAI API is properly configured"""
-    expert = SuperAdvancedBankExpert()
-    return expert.is_available()
-
-# Legacy compatibility functions with DYNAMIC rates
-def apply_advanced_corrections(original_segments, principal: float, month_end_str: str):
-    """🔥 FIXED: Extract rates from segments dynamically"""
-    if not original_segments:
-        return False, original_segments, "No segments to analyze"
+def _validate_banking_compliance(self, segments: List[Dict], standard_rate: float, cross_month_rate: float, month_end_str: str) -> Dict:
+    """Validate segments comply with banking regulations"""
+    issues = []
+    month_end = datetime.strptime(month_end_str, "%Y-%m-%d")
     
-    # Extract rates from actual segments
-    standard_rate = 6.20  # Default
-    cross_month_rate = 9.20  # Default
-    
-    # Try to detect rates from segments
-    for seg in original_segments:
-        if not getattr(seg, 'crosses_month', False) and seg.rate < 8.0:
-            standard_rate = seg.rate
+    # Check if loan ever crosses month-end
+    loan_crosses = False
+    for seg in segments:
+        start_date = datetime.strptime(seg["start_date"] if "start_date" in seg else seg["period"].split(" to ")[0], "%Y-%m-%d")
+        end_date = datetime.strptime(seg["end_date"] if "end_date" in seg else seg["period"].split(" to ")[1], "%Y-%m-%d")
+        if start_date <= month_end and end_date > month_end:
+            loan_crosses = True
             break
     
-    return apply_super_advanced_corrections(original_segments, principal, month_end_str, cross_month_rate, standard_rate)
-
-def apply_ai_corrections(original_segments, principal: float, month_end_str: str):
-    """Legacy function name"""
-    return apply_advanced_corrections(original_segments, principal, month_end_str)
-
-def analyze_loan_segments_with_ai(segments, month_end_str):
-    """Legacy function for basic analysis"""
-    expert = SuperAdvancedBankExpert()
-    
-    if not expert.is_available():
-        return {
-            "error": "OpenAI API not available", 
-            "message": "Set OPENAI_API_KEY to enable o1-mini analysis"
-        }
-    
-    # Convert segments to dict format
-    segment_dicts = []
-    for seg in segments:
-        segment_dicts.append({
-            "bank": seg.bank,
-            "start_date": seg.start_date.strftime('%Y-%m-%d'),
-            "end_date": seg.end_date.strftime('%Y-%m-%d'),
-            "rate": seg.rate,
-            "days": seg.days,
-            "crosses_month": seg.crosses_month
-        })
-    
-    # Extract rates
-    standard_rate = 6.20
-    cross_month_rate = 9.20
-    for seg in segments:
-        if not getattr(seg, 'crosses_month', False) and seg.rate < 8.0:
-            standard_rate = seg.rate
-            break
-    
-    # Ultra-strict analysis
-    corrected, corrected_data, explanation = expert.ultra_strict_validation(
-        segment_dicts, 
-        month_end_str, 
-        cross_month_rate=cross_month_rate,
-        standard_rate=standard_rate,
-        principal=38_000_000_000
-    )
+    for i, seg in enumerate(segments):
+        start_date = datetime.strptime(seg["start_date"] if "start_date" in seg else seg["period"].split(" to ")[0], "%Y-%m-%d")
+        end_date = datetime.strptime(seg["end_date"] if "end_date" in seg else seg["period"].split(" to ")[1], "%Y-%m-%d")
+        rate = seg["rate"]
+        
+        # Banking Rule 1: No cross-month segments with standard rate
+        if start_date <= month_end and end_date > month_end and rate == standard_rate:
+            issues.append(f"Segment {i}: Cross-month segment still uses forbidden standard rate {rate}%")
+        
+        # Banking Rule 2: No post-crossing segments with standard rate in exposed loans
+        if loan_crosses and start_date > month_end and rate == standard_rate:
+            issues.append(f"Segment {i}: Post-crossing segment uses contaminated standard rate {rate}% in exposed loan")
+        
+        # Banking Rule 3: Cross-month segments must use approved rates
+        if start_date <= month_end and end_date > month_end and rate not in [7.75, cross_month_rate]:
+            issues.append(f"Segment {i}: Cross-month segment uses non-approved rate {rate}%")
     
     return {
-        "corrected": corrected,
-        "explanation": explanation,
-        "corrected_segments": corrected_data if corrected else [],
-        "model_used": "o1-mini (advanced reasoning)",
-        "rates_used": f"Standard: {standard_rate}%, Cross-month: {cross_month_rate}%"
+        "compliant": len(issues) == 0,
+        "issues": issues,
+        "loan_crosses_month": loan_crosses
     }
+
+def _emergency_banking_correction(self, segments: List[Dict], standard_rate: float, cross_month_rate: float, principal: float, month_end_str: str) -> Tuple[bool, List[Dict], str]:
+    """Emergency banking-compliant correction when AI parsing fails"""
+    month_end = datetime.strptime(month_end_str, "%Y-%m-%d")
+    corrected_segments = []
+    corrections_made = 0
+    
+    # Determine if loan crosses month-end
+    loan_crosses = False
+    for seg in segments:
+        start_date = datetime.strptime(seg["start_date"], "%Y-%m-%d")
+        end_date = datetime.strptime(seg["end_date"], "%Y-%m-%d")
+        if start_date <= month_end and end_date > month_end:
+            loan_crosses = True
+            break
+    
+    for seg in segments:
+        start_date = datetime.strptime(seg["start_date"], "%Y-%m-%d")
+        end_date = datetime.strptime(seg["end_date"], "%Y-%m-%d")
+        
+        needs_banking_correction = False
+        
+        # Banking violation check
+        if start_date <= month_end and end_date > month_end and seg["rate"] == standard_rate:
+            needs_banking_correction = True
+        
+        if loan_crosses and start_date > month_end and seg["rate"] == standard_rate:
+            needs_banking_correction = True
+        
+        if needs_banking_correction:
+            # Apply banking-compliant correction
+            corrected_seg = seg.copy()
+            corrected_seg["bank"] = "CITI Call (Banking Compliant)"
+            corrected_seg["rate"] = 7.75
+            corrected_seg["banking_status"] = "REGULATORY_COMPLIANT"
+            corrected_seg["interest"] = int(principal * (7.75 / 100) * (seg["days"] / 365))
+            corrections_made += 1
+        else:
+            corrected_seg = seg.copy()
+            corrected_seg["banking_status"] = "COMPLIANT"
+        
+        corrected_segments.append(corrected_seg)
+    
+    if corrections_made > 0:
+        return True, corrected_segments, f"Emergency banking correction: Fixed {corrections_made} regulatory violations"
+    else:
+        return False, segments, "Emergency banking check: No violations found"

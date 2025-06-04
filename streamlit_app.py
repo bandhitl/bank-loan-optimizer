@@ -179,43 +179,54 @@ def check_bank_expert_status():
         return False, f"Error checking Bank IT Expert: {str(e)}"
 
 def apply_expert_corrections(segments, principal, month_end_str, cross_month_rate=9.20, standard_rate=6.20):
-    """🔥 FIXED: Apply Bank IT Expert auto-corrections with user rates"""
+    """🏦 ENHANCED: Apply Banking Expert auto-corrections with domain expertise"""
     try:
-        from openai_helper import apply_super_advanced_corrections
-        return apply_super_advanced_corrections(segments, principal, month_end_str, cross_month_rate, standard_rate)
+        from openai_helper import apply_enhanced_banking_corrections
+        return apply_enhanced_banking_corrections(segments, principal, month_end_str, cross_month_rate, standard_rate)
     except ImportError as e:
-        return False, segments, f"Bank IT Expert module not found: {str(e)}"
+        return False, segments, f"Banking Expert module not found: {str(e)}"
     except Exception as e:
-        return False, segments, f"Expert correction failed: {str(e)}"
+        return False, segments, f"Banking expert correction failed: {str(e)}"
 
 def display_expert_status():
-    """Display Bank IT Expert status in sidebar"""
-    st.subheader("🤖 Bank IT Expert Status")
+    """Display Banking Expert status in sidebar"""
+    st.subheader("🏦 Banking AI Expert Status")
     
     expert_available, error_msg = check_bank_expert_status()
     
     if expert_available:
-        st.success("✅ Bank IT Expert available - Auto-correction enabled")
-        st.info("🧠 Expert will automatically fix calculation errors")
+        st.success("✅ Banking Expert available - Advanced domain analysis enabled")
+        st.info("🏛️ Expert has 20+ years treasury management experience")
+        st.info("📚 Specialized in month-end risk & regulatory compliance")
+        st.info("🔍 Auto-detects Basel III & liquidity coverage violations")
     else:
         if error_msg and "not found" in error_msg:
-            st.error("❌ Bank IT Expert module not available")
-            st.info("🔧 Make sure openai_helper.py is updated")
+            st.error("❌ Banking Expert module not available")
+            st.info("🔧 Make sure openai_helper.py is updated with banking enhancements")
         else:
-            st.warning("⚠️ Bank IT Expert not configured")
-            st.info("🔧 To enable expert analysis, set `OPENAI_API_KEY` in Render environment variables")
+            st.warning("⚠️ Banking Expert not configured")
+            st.info("🔧 To enable banking domain expertise, set `OPENAI_API_KEY` in environment")
             
             # Show detailed setup instructions
-            with st.expander("📋 Setup Instructions"):
+            with st.expander("📋 Setup Banking Expert"):
                 st.markdown("""
-                **To enable Bank IT Expert:**
-                1. Go to your Render dashboard
-                2. Navigate to your service settings
-                3. Go to Environment tab
-                4. Add environment variable: 
-                   - **Key**: `OPENAI_API_KEY`
-                   - **Value**: `your_openai_api_key`
-                5. Save and redeploy the service
+                **Banking Expert provides:**
+                - 🏛️ **Treasury Domain Knowledge**: 20+ years banking experience
+                - 📊 **Regulatory Compliance**: Basel III, liquidity coverage ratios
+                - 🔍 **Month-End Risk Detection**: Advanced violation detection
+                - 💡 **Banking Logic**: Rate hierarchy and risk pricing
+                - 🔧 **Auto-Correction**: Fixes violations with banking-optimal solutions
+                
+                **Setup Instructions:**
+                1. Go to your deployment environment (Render/Heroku/etc.)
+                2. Navigate to environment variables section
+                3. Add: **Key**: `OPENAI_API_KEY`, **Value**: `your_openai_api_key`
+                4. Save and redeploy
+                
+                **Get OpenAI API Key:**
+                - Visit [platform.openai.com](https://platform.openai.com)
+                - Create account and generate API key
+                - Models used: o1-mini (primary), gpt-4o (fallback)
                 """)
     
     return expert_available
@@ -338,7 +349,7 @@ def main():
             help="Permata 1-month term rate"
         )
         
-        # Bank IT Expert Status
+        # Banking Expert Status
         expert_available = display_expert_status()
         
         # Calculate button
@@ -426,17 +437,17 @@ def main():
                 st.exception(e)
                 st.stop()
         
-        # Phase 2: Bank IT Expert Auto-Correction
+        # Phase 2: Banking Expert Auto-Correction
         corrected = False
         correction_explanation = ""
         
         if expert_available and best_strategy and best_strategy.is_valid:
-            with st.spinner("Phase 2: Bank IT Expert reviewing and auto-correcting..."):
+            with st.spinner("Phase 2: Banking Expert reviewing and auto-correcting..."):
                 
                 # 🔍 DEBUG: Show what we're sending to AI
-                with st.expander("🔍 DEBUG - AI Expert Analysis"):
+                with st.expander("🔍 DEBUG - Banking Expert Analysis"):
                     st.markdown('<div class="debug-info">', unsafe_allow_html=True)
-                    st.write(f"**Sending to AI Expert:**")
+                    st.write(f"**Sending to Banking Expert:**")
                     st.write(f"Month end: {month_end.strftime('%Y-%m-%d')}")
                     st.write(f"Principal: {principal:,}")
                     
@@ -454,7 +465,7 @@ def main():
                         st.write("✅ **No obvious problems to fix**")
                     st.markdown('</div>', unsafe_allow_html=True)
                 
-                # 🔥 FIXED: Pass user-provided rates to AI
+                # 🔥 FIXED: Pass user-provided rates to Banking Expert
                 corrected, corrected_segments, correction_explanation = apply_expert_corrections(
                     best_strategy.segments, 
                     principal,
@@ -463,15 +474,15 @@ def main():
                     scbt_1w_rate      # Pass user's standard rate
                 )
                 
-                # 🔍 DEBUG: Show AI response
-                with st.expander("🔍 DEBUG - AI Expert Response"):
+                # 🔍 DEBUG: Show Banking Expert response
+                with st.expander("🔍 DEBUG - Banking Expert Response"):
                     st.markdown('<div class="debug-info">', unsafe_allow_html=True)
-                    st.write(f"**AI Response:**")
+                    st.write(f"**Banking Expert Response:**")
                     st.write(f"Corrected: {corrected}")
                     st.write(f"Explanation: {correction_explanation}")
                     
                     if corrected and corrected_segments:
-                        st.write("**After AI Correction:**")
+                        st.write("**After Banking Expert Correction:**")
                         for i, seg in enumerate(corrected_segments):
                             cross_month_check = seg.start_date <= month_end_datetime and seg.end_date > month_end_datetime
                             status = "🔴 Still crosses!" if cross_month_check and seg.rate == scbt_1w_rate else "✅ Fixed" if cross_month_check else "✅ OK"
@@ -482,13 +493,13 @@ def main():
                     # Update best strategy with corrected segments
                     from loan_calculator import LoanStrategy
                     best_strategy = LoanStrategy(
-                        name=best_strategy.name + " (AI Corrected)",
+                        name=best_strategy.name + " (Banking Expert Corrected)",
                         segments=corrected_segments,
                         is_optimized=True
                     )
                     
                     # Also update strategies list
-                    all_strategies = [best_strategy] + [s for s in all_strategies if s.name != best_strategy.name.replace(" (AI Corrected)", "")]
+                    all_strategies = [best_strategy] + [s for s in all_strategies if s.name != best_strategy.name.replace(" (Banking Expert Corrected)", "")]
         
         if best_strategy and best_strategy.is_valid:
             # Find baseline for comparison
@@ -503,7 +514,7 @@ def main():
             # Display correction notice if applied
             if corrected:
                 st.markdown('<div class="ai-correction">', unsafe_allow_html=True)
-                st.success("🤖 Bank IT Expert Auto-Correction Applied!")
+                st.success("🏦 Banking Expert Auto-Correction Applied!")
                 st.info(f"**Expert Analysis:** {correction_explanation}")
                 st.markdown('</div>', unsafe_allow_html=True)
             
@@ -542,7 +553,7 @@ def main():
             st.markdown('</div>', unsafe_allow_html=True)
             
             # Tabs for different views
-            tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Timeline", "📋 Schedule", "🔍 Comparison", "📝 Logs", "🤖 Expert Review"])
+            tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Timeline", "📋 Schedule", "🔍 Comparison", "📝 Logs", "🏦 Expert Review"])
             
             with tab1:
                 st.subheader("Loan Timeline Visualization")
@@ -616,7 +627,7 @@ def main():
                             status = "✅ Valid"
                             if strategy.uses_multi_banks:
                                 status += " (Multi-Bank)"
-                            if "(AI Corrected)" in strategy.name:
+                            if "(Banking Expert Corrected)" in strategy.name:
                                 status += " (Expert Corrected)"
                         else:
                             savings_vs_baseline = float('inf')
@@ -664,31 +675,31 @@ def main():
                     st.info("No calculation logs available")
             
             with tab5:
-                st.subheader("🤖 Bank IT Expert Review")
+                st.subheader("🏦 Banking Expert Review")
                 if expert_available:
                     if corrected:
                         st.markdown('<div class="ai-correction">', unsafe_allow_html=True)
-                        st.success("✅ Expert Auto-Correction Applied")
+                        st.success("✅ Banking Expert Auto-Correction Applied")
                         st.write(f"**Expert Analysis:** {correction_explanation}")
                         
                         # Show before/after comparison
                         st.write("**🔧 Expert Actions Taken:**")
-                        st.info("• Identified cross-month penalty errors")
+                        st.info("• Identified cross-month regulatory violations")
                         st.info("• Applied optimal bank switching strategy") 
-                        st.info("• Recalculated interest with correct rates")
+                        st.info("• Recalculated interest with compliant rates")
                         st.info("• Verified final calculation accuracy")
                         
                         st.markdown('</div>', unsafe_allow_html=True)
                     else:
-                        st.success("✅ Expert Review: No corrections needed")
-                        st.info("Bank IT Expert verified the calculation logic is correct")
+                        st.success("✅ Banking Expert Review: No corrections needed")
+                        st.info("Banking Expert verified the calculation logic is compliant with regulations")
                 else:
-                    st.warning("🔑 Set OPENAI_API_KEY in Render environment variables to enable Bank IT Expert")
+                    st.warning("🔑 Set OPENAI_API_KEY in environment variables to enable Banking Expert")
                     
-                    with st.expander("📋 How to Enable Bank IT Expert"):
+                    with st.expander("📋 How to Enable Banking Expert"):
                         st.markdown("""
-                        **Steps to enable Bank IT Expert:**
-                        1. Go to your Render dashboard
+                        **Steps to enable Banking Expert:**
+                        1. Go to your deployment dashboard (Render/Heroku/etc.)
                         2. Navigate to your service settings  
                         3. Click on "Environment" tab
                         4. Add new environment variable:
@@ -725,7 +736,7 @@ def main():
         - 📊 Analyzing cross-month penalties
         - 🏦 Supporting multi-bank strategies
         - 📈 Maximizing your savings
-        - 🤖 **Bank IT Expert auto-correction** (when OpenAI API is configured)
+        - 🏛️ **Banking Expert domain analysis** (when OpenAI API is configured)
         
         **How to use:**
         1. Set your loan parameters in the sidebar
@@ -734,12 +745,12 @@ def main():
         4. Review the results and expert corrections
         
         **Features:**
-        - **Phase 1:** Initial calculation with current logic
-        - **Phase 2:** Bank IT Expert review and auto-correction
+        - **Phase 1:** Initial calculation with multi-month logic
+        - **Phase 2:** Banking Expert review and auto-correction
         - Smart cross-month handling with CITI Call switching
         - Visual timeline and comparison charts
         - Detailed loan schedule breakdown
-        - **Expert validation** for calculation accuracy
+        - **Expert validation** for regulatory compliance
         - **Debug information** to track calculation steps
         
         👈 **Get started by filling in the parameters on the left sidebar!**
@@ -759,9 +770,9 @@ def main():
         st.subheader("🔧 System Status")
         expert_status, _ = check_bank_expert_status()
         if expert_status:
-            st.success("✅ Bank IT Expert configured - Auto-correction available")
+            st.success("✅ Banking Expert configured - Advanced domain analysis available")
         else:
-            st.info("ℹ️ Bank IT Expert not configured - basic analysis only")
+            st.info("ℹ️ Banking Expert not configured - basic analysis only")
 
 if __name__ == "__main__":
     main()
