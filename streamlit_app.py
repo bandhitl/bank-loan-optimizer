@@ -3,7 +3,11 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-from loan_calculator import RealBankingCalculator
+try:
+    from loan_calculator import RealBankingCalculator
+except ImportError:
+    st.error("❌ loan_calculator.py not found or has import errors")
+    st.stop()
 
 # Set page config
 st.set_page_config(
@@ -271,11 +275,24 @@ def create_banking_cost_breakdown(strategies):
         return None
 
 def check_real_banking_expert_status():
-    """Check Real Banking Expert availability"""
+    """Check Real Banking Expert availability with proper error handling"""
     try:
         from openai_helper import check_openai_availability
         return check_openai_availability(), None
     except ImportError as e:
+        return False, f"Real Banking Expert module not found: {str(e)}"
+    except Exception as e:
+        return False, f"Error checking Real Banking Expert: {str(e)}"
+
+def apply_real_banking_corrections(segments, principal, month_end_str, cross_month_rate=9.20, standard_rate=6.20):
+    """Apply Real Banking Expert corrections with proper error handling"""
+    try:
+        from openai_helper import apply_enhanced_banking_corrections
+        return apply_enhanced_banking_corrections(segments, principal, month_end_str, cross_month_rate, standard_rate)
+    except ImportError as e:
+        return False, segments, f"Real Banking Expert module not found: {str(e)}"
+    except Exception as e:
+        return False, segments, f"Real Banking Expert correction failed: {str(e)}"pt ImportError as e:
         return False, f"Real Banking Expert module not found: {str(e)}"
     except Exception as e:
         return False, f"Error checking Real Banking Expert: {str(e)}"
@@ -399,19 +416,40 @@ def main():
             # Show calculated loan period
             st.info(f"📅 **Loan Period:** {start_date.strftime('%Y-%m-%d')} → {loan_end_date.strftime('%Y-%m-%d')}")
             
-            # Auto-detect month-ends
-            calculator_preview = RealBankingCalculator()
-            month_ends = calculator_preview.get_month_end_dates(
-                datetime.combine(start_date, datetime.min.time()),
-                datetime.combine(loan_end_date, datetime.min.time())
-            )
-            
-            if month_ends:
-                month_end_strs = [me.strftime('%Y-%m-%d (%b)') for me in month_ends]
-                st.warning(f"🚨 **Month-end crossings detected:** {', '.join(month_end_strs)}")
-                st.write("💡 System will automatically apply month-end penalties and tactical switching")
-            else:
-                st.success("✅ **No month-end crossings** - standard rates will be used throughout")
+            # Auto-detect month-ends using simple logic
+            try:
+                start_datetime = datetime.combine(start_date, datetime.min.time())
+                end_datetime = datetime.combine(loan_end_date, datetime.min.time())
+                
+                # Simple month-end detection
+                month_ends = []
+                current_month = start_datetime.replace(day=1)
+                
+                while current_month <= end_datetime + timedelta(days=31):
+                    # Get last day of current month
+                    if current_month.month == 12:
+                        next_month = current_month.replace(year=current_month.year + 1, month=1)
+                    else:
+                        next_month = current_month.replace(month=current_month.month + 1)
+                    
+                    last_day_of_month = next_month - timedelta(days=1)
+                    
+                    # Check if loan crosses this month-end
+                    if start_datetime <= last_day_of_month and end_datetime > last_day_of_month:
+                        month_ends.append(last_day_of_month)
+                    
+                    current_month = next_month
+                
+                if month_ends:
+                    month_end_strs = [me.strftime('%Y-%m-%d (%b)') for me in month_ends]
+                    st.warning(f"🚨 **Month-end crossings detected:** {', '.join(month_end_strs)}")
+                    st.write("💡 System will automatically apply month-end penalties and tactical switching")
+                else:
+                    st.success("✅ **No month-end crossings** - standard rates will be used throughout")
+                    
+            except Exception as e:
+                st.error(f"Error in month-end detection: {e}")
+                st.write("Will proceed with basic calculation")
         
         st.header("🏛️ Banking Rate Structure")
         
@@ -504,13 +542,35 @@ def main():
             st.error("❌ Principal amount must be greater than 0")
             st.stop()
         
-        # Convert dates to datetime - auto-detect month-end
-        start_datetime = datetime.combine(start_date, datetime.min.time())
-        loan_end_datetime = start_datetime + timedelta(days=total_days - 1)
-        
-        # Auto-detect month-ends in loan period
-        calculator_temp = RealBankingCalculator()
-        detected_month_ends = calculator_temp.get_month_end_dates(start_datetime, loan_end_datetime)
+        # Auto-detect month-ends in loan period using simple logic
+        try:
+            start_datetime = datetime.combine(start_date, datetime.min.time())
+            loan_end_datetime = start_datetime + timedelta(days=total_days - 1)
+            
+            # Simple month-end detection
+            detected_month_ends = []
+            current_month = start_datetime.replace(day=1)
+            
+            while current_month <= loan_end_datetime + timedelta(days=31):
+                # Get last day of current month
+                if current_month.month == 12:
+                    next_month = current_month.replace(year=current_month.year + 1, month=1)
+                else:
+                    next_month = current_month.replace(month=current_month.month + 1)
+                
+                last_day_of_month = next_month - timedelta(days=1)
+                
+                # Check if loan crosses this month-end
+                if start_datetime <= last_day_of_month and loan_end_datetime > last_day_of_month:
+                    detected_month_ends.append(last_day_of_month)
+                
+                current_month = next_month
+            
+        except Exception as e:
+            st.error(f"Error in month-end detection: {e}")
+            detected_month_ends = []
+            start_datetime = datetime.combine(start_date, datetime.min.time())
+            loan_end_datetime = start_datetime + timedelta(days=total_days - 1)
         
         # Use first detected month-end, or create a dummy far future date if none
         month_end_datetime = detected_month_ends[0] if detected_month_ends else datetime(2099, 12, 31)
@@ -1088,9 +1148,29 @@ def main():
         preview_start = datetime(2025, 5, 25)
         preview_end = preview_start + timedelta(days=30-1)
         
-        # Auto-detect preview month-end
-        preview_calc = RealBankingCalculator()
-        preview_month_ends = preview_calc.get_month_end_dates(preview_start, preview_end)
+        # Auto-detect preview month-end using simple logic
+        try:
+            preview_calc = RealBankingCalculator()
+            preview_month_ends = []
+            
+            # Simple detection for preview
+            current_month = preview_start.replace(day=1)
+            while current_month <= preview_end + timedelta(days=31):
+                if current_month.month == 12:
+                    next_month = current_month.replace(year=current_month.year + 1, month=1)
+                else:
+                    next_month = current_month.replace(month=current_month.month + 1)
+                
+                last_day_of_month = next_month - timedelta(days=1)
+                
+                if preview_start <= last_day_of_month and preview_end > last_day_of_month:
+                    preview_month_ends.append(last_day_of_month)
+                
+                current_month = next_month
+                
+        except Exception as e:
+            st.error(f"Preview calculation error: {e}")
+            preview_month_ends = [datetime(2025, 5, 31)]  # Fallback
         
         if preview_month_ends:
             preview_month_end = preview_month_ends[0]
