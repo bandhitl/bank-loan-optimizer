@@ -1,4 +1,3 @@
-import openai
 import os
 import json
 from datetime import datetime, timedelta
@@ -7,13 +6,20 @@ from typing import List, Dict, Any, Tuple
 class AdvancedBankExpert:
     def __init__(self):
         """
-        Advanced Bank IT Expert with multi-step validation and o1-mini model support
+        Advanced Bank IT Expert with multi-step validation
         """
         api_key = os.getenv('OPENAI_API_KEY')
         if api_key:
-            from openai import OpenAI
-            self.client = OpenAI(api_key=api_key)
-            self.api_available = True
+            try:
+                from openai import OpenAI
+                self.client = OpenAI(api_key=api_key)
+                self.api_available = True
+            except ImportError:
+                # Fallback for older openai versions
+                import openai
+                openai.api_key = api_key
+                self.client = openai
+                self.api_available = True
         else:
             self.api_available = False
     
@@ -40,20 +46,17 @@ class AdvancedBankExpert:
         if not step1_result.get("has_critical_errors", False):
             return False, segments, "No critical errors detected by Advanced Bank Expert"
         
-        # STEP 2: Mathematical Validation
-        step2_result = self._step2_mathematical_validation(segments, month_end, principal, cross_month_rate)
+        # STEP 2: Generate Corrections
+        step2_result = self._step2_generate_corrections(segments, month_end, cross_month_rate, principal, step1_result)
         
-        # STEP 3: Generate Corrections
-        step3_result = self._step3_generate_corrections(segments, month_end, cross_month_rate, principal, step1_result, step2_result)
-        
-        # STEP 4: Final Verification
-        if step3_result.get("corrected_segments"):
-            step4_result = self._step4_verify_corrections(step3_result["corrected_segments"], month_end, cross_month_rate)
+        # STEP 3: Final Verification
+        if step2_result.get("corrected_segments"):
+            step3_result = self._step3_verify_corrections(step2_result["corrected_segments"], month_end, cross_month_rate)
             
-            if step4_result.get("verification_passed", False):
-                return True, step3_result["corrected_segments"], step4_result.get("final_explanation", "Corrections applied and verified")
+            if step3_result.get("verification_passed", False):
+                return True, step2_result["corrected_segments"], step3_result.get("final_explanation", "Corrections applied and verified")
             else:
-                return False, segments, f"Verification failed: {step4_result.get('verification_errors', 'Unknown error')}"
+                return False, segments, f"Verification failed: {step3_result.get('verification_errors', 'Unknown error')}"
         
         return False, segments, "Failed to generate valid corrections"
     
@@ -88,7 +91,7 @@ RESPOND WITH JSON ONLY:
       "segment_index": 0,
       "error_type": "cross_month_wrong_rate",
       "current_rate": 6.20,
-      "should_be_rate": 9.20,
+      "should_be_rate": 7.75,
       "start_date": "2025-05-31",
       "end_date": "2025-06-01", 
       "crosses_month": true,
@@ -103,90 +106,45 @@ CHECK EVERY SINGLE SEGMENT. DO NOT SKIP ANY.
 """
 
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4",  # Use gpt-4 for better logical reasoning
-                messages=[
-                    {"role": "system", "content": "You are a precise bank treasury expert who detects calculation errors with 100% accuracy."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.0,  # Zero creativity - pure logic
-                max_tokens=2000
-            )
+            if hasattr(self.client, 'chat'):
+                # New OpenAI client
+                response = self.client.chat.completions.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": "You are a precise bank treasury expert who detects calculation errors with 100% accuracy."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.0,
+                    max_tokens=2000
+                )
+                content = response.choices[0].message.content.strip()
+            else:
+                # Old OpenAI client
+                response = self.client.ChatCompletion.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": "You are a precise bank treasury expert who detects calculation errors with 100% accuracy."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.0,
+                    max_tokens=2000
+                )
+                content = response.choices[0].message.content.strip()
             
-            content = response.choices[0].message.content.strip()
             return json.loads(content)
             
         except Exception as e:
             return {"error": f"Step 1 failed: {str(e)}"}
     
-    def _step2_mathematical_validation(self, segments: List[Dict], month_end: str, principal: float, cross_month_rate: float) -> Dict:
-        """STEP 2: Mathematical Cost Validation"""
-        
-        prompt = f"""
-You are a BANK MATHEMATICIAN validating cost calculations.
-
-MONTH-END: {month_end}
-PRINCIPAL: {principal:,.0f} IDR
-CROSS-MONTH PENALTY: {cross_month_rate}%
-
-MATHEMATICAL VALIDATION TASK:
-For each segment that crosses month-end, calculate:
-1. Current interest cost (using wrong rate)
-2. Correct interest cost (using {cross_month_rate}% penalty OR 7.75% CITI Call)
-3. Cost error amount per segment
-4. Total financial impact
-
-SEGMENTS:
-{json.dumps(segments, indent=2)}
-
-CALCULATION FORMULA:
-Interest = Principal × (Rate/100) × (Days/365)
-
-RESPOND WITH JSON:
-{{
-  "total_cost_error": 0,
-  "segments_with_errors": [
-    {{
-      "index": 0,
-      "current_cost": 12345,
-      "correct_cost_penalty": 23456,
-      "correct_cost_citi": 19876,
-      "optimal_choice": "CITI Call",
-      "savings_from_correction": 3579
-    }}
-  ],
-  "mathematical_verification": "PASS/FAIL"
-}}
-"""
-
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are a precise bank mathematician who calculates interest with exact precision."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.0,
-                max_tokens=2000
-            )
-            
-            content = response.choices[0].message.content.strip()
-            return json.loads(content)
-            
-        except Exception as e:
-            return {"error": f"Step 2 failed: {str(e)}"}
-    
-    def _step3_generate_corrections(self, segments: List[Dict], month_end: str, cross_month_rate: float, principal: float, step1_result: Dict, step2_result: Dict) -> Dict:
-        """STEP 3: Generate Corrected Segments"""
+    def _step2_generate_corrections(self, segments: List[Dict], month_end: str, cross_month_rate: float, 
+                                  principal: float, step1_result: Dict) -> Dict:
+        """STEP 2: Generate Corrected Segments"""
         
         prompt = f"""
 You are a BANK IT SYSTEMS EXPERT generating corrected loan segments.
 
 ERRORS DETECTED:
 {json.dumps(step1_result.get("critical_errors", []), indent=2)}
-
-COST ANALYSIS:
-{json.dumps(step2_result.get("segments_with_errors", []), indent=2)}
 
 ORIGINAL SEGMENTS:
 {json.dumps(segments, indent=2)}
@@ -226,28 +184,44 @@ GENERATE COMPLETE CORRECTED SEGMENT LIST:
   "total_segments": 9
 }}
 
+Principal for interest calculation: {principal:,.0f} IDR
+
 IMPORTANT: Return ALL segments in corrected form, not just the changed ones.
 """
 
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are a bank IT expert who generates precisely corrected loan segments."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.0,
-                max_tokens=3000
-            )
+            if hasattr(self.client, 'chat'):
+                # New OpenAI client
+                response = self.client.chat.completions.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": "You are a bank IT expert who generates precisely corrected loan segments."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.0,
+                    max_tokens=3000
+                )
+                content = response.choices[0].message.content.strip()
+            else:
+                # Old OpenAI client
+                response = self.client.ChatCompletion.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": "You are a bank IT expert who generates precisely corrected loan segments."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.0,
+                    max_tokens=3000
+                )
+                content = response.choices[0].message.content.strip()
             
-            content = response.choices[0].message.content.strip()
             return json.loads(content)
             
         except Exception as e:
-            return {"error": f"Step 3 failed: {str(e)}"}
+            return {"error": f"Step 2 failed: {str(e)}"}
     
-    def _step4_verify_corrections(self, corrected_segments: List[Dict], month_end: str, cross_month_rate: float) -> Dict:
-        """STEP 4: Final Verification of Corrections"""
+    def _step3_verify_corrections(self, corrected_segments: List[Dict], month_end: str, cross_month_rate: float) -> Dict:
+        """STEP 3: Final Verification of Corrections"""
         
         prompt = f"""
 You are a BANK AUDIT EXPERT performing final verification.
@@ -256,7 +230,7 @@ CORRECTED SEGMENTS TO VERIFY:
 {json.dumps(corrected_segments, indent=2)}
 
 VERIFICATION CHECKLIST:
-1. NO segment should cross month-end ({month_end}) with standard rate
+1. NO segment should cross month-end ({month_end}) with standard rate (6.20%)
 2. ALL cross-month segments should use CITI Call (7.75%) or penalty ({cross_month_rate}%)
 3. Interest calculations should be mathematically correct
 4. Total segment count should match original
@@ -282,21 +256,35 @@ BE EXTREMELY STRICT. If ANY segment still has wrong rate for cross-month, FAIL t
 """
 
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are a strict bank auditor who accepts only perfect calculations."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.0,
-                max_tokens=2000
-            )
+            if hasattr(self.client, 'chat'):
+                # New OpenAI client
+                response = self.client.chat.completions.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": "You are a strict bank auditor who accepts only perfect calculations."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.0,
+                    max_tokens=2000
+                )
+                content = response.choices[0].message.content.strip()
+            else:
+                # Old OpenAI client
+                response = self.client.ChatCompletion.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": "You are a strict bank auditor who accepts only perfect calculations."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.0,
+                    max_tokens=2000
+                )
+                content = response.choices[0].message.content.strip()
             
-            content = response.choices[0].message.content.strip()
             return json.loads(content)
             
         except Exception as e:
-            return {"error": f"Step 4 failed: {str(e)}"}
+            return {"error": f"Step 3 failed: {str(e)}"}
 
 def apply_advanced_corrections(original_segments, principal: float, month_end_str: str):
     """
@@ -369,53 +357,44 @@ def check_openai_availability():
     expert = AdvancedBankExpert()
     return expert.is_available()
 
-# Testing function
-if __name__ == "__main__":
+# Legacy function names for compatibility
+def apply_ai_corrections(original_segments, principal: float, month_end_str: str):
+    """Legacy function name - calls apply_advanced_corrections"""
+    return apply_advanced_corrections(original_segments, principal, month_end_str)
+
+def analyze_loan_segments_with_ai(segments, month_end_str):
+    """Legacy function for basic analysis"""
     expert = AdvancedBankExpert()
     
     if not expert.is_available():
-        print("❌ OpenAI API not configured")
-        exit(1)
-    
-    print("✅ Advanced Bank Expert ready")
-    
-    # Test with problematic segments (cross-month with wrong rate)
-    test_segments = [
-        {
-            "index": 0,
-            "bank": "SCBT 1w",
-            "start_date": "2025-05-22",
-            "end_date": "2025-05-28",
-            "rate": 6.20,
-            "days": 7,
-            "crosses_month": False,
-            "interest": 45183562
-        },
-        {
-            "index": 3,
-            "bank": "SCBT 1w (Gap)",  # ❌ This crosses month-end with wrong rate!
-            "start_date": "2025-05-31",
-            "end_date": "2025-06-01", 
-            "rate": 6.20,  # ❌ WRONG - should be 7.75% (CITI Call) or 9.20% (penalty)
-            "days": 2,
-            "crosses_month": True,
-            "interest": 12909589  # Calculated with wrong rate
+        return {
+            "error": "OpenAI API not available", 
+            "message": "Set OPENAI_API_KEY in Render environment variables to enable AI analysis"
         }
-    ]
     
-    corrected, corrected_segments, explanation = expert.multi_step_validation(
-        test_segments, 
-        "2025-05-31", 
+    # Convert segments to dict format
+    segment_dicts = []
+    for seg in segments:
+        segment_dicts.append({
+            "bank": seg.bank,
+            "start_date": seg.start_date.strftime('%Y-%m-%d'),
+            "end_date": seg.end_date.strftime('%Y-%m-%d'),
+            "rate": seg.rate,
+            "days": seg.days,
+            "crosses_month": seg.crosses_month
+        })
+    
+    # Simple analysis
+    corrected, corrected_data, explanation = expert.multi_step_validation(
+        segment_dicts, 
+        month_end_str, 
         cross_month_rate=9.20, 
         standard_rate=6.20,
-        principal=38_000_000_000
+        principal=38_000_000_000  # Default principal
     )
     
-    print(f"Multi-step correction result: {corrected}")
-    print(f"Explanation: {explanation}")
-    if corrected:
-        print("Corrected segments:")
-        for seg in corrected_segments:
-            print(f"- {seg}")
-    else:
-        print("No corrections applied")
+    return {
+        "corrected": corrected,
+        "explanation": explanation,
+        "corrected_segments": corrected_data if corrected else []
+    }
