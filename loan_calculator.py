@@ -291,50 +291,59 @@ class RealBankingCalculator:
             
             # 🏦 Strategy 1: Avoid month-end crossing completely
             if crosses_month and current_date <= last_biz_day_before_month_end:
-                # Stop before month-end, use CITI bridge, resume after
+                # 🚨 CRITICAL: Must switch BEFORE the last business day to avoid being stuck
                 
-                # Pre-month-end segment
-                days_before = (last_biz_day_before_month_end - current_date).days + 1
-                if days_before > 0:
-                    pre_segment = LoanSegment(
-                        bank=bank_name,
-                        bank_class=bank_class,
-                        rate=standard_rate,
-                        days=days_before,
-                        start_date=current_date,
-                        end_date=last_biz_day_before_month_end,
-                        interest=self.calculate_interest(principal, standard_rate, days_before),
-                        crosses_month=False
-                    )
-                    pre_segment.banking_logic = f"Pre-month-end segment - stops on last business day"
-                    pre_segment.compliance_status = "FULLY_COMPLIANT"
-                    segments.append(pre_segment)
-                    
-                    self.log_message(f"✅ Pre-month-end: {days_before} days @ {standard_rate}%", "INFO")
-                    remaining_days -= days_before
+                # Calculate safe switch date (day before last business day if possible)
+                safe_switch_date = last_biz_day_before_month_end
+                days_before_switch = (safe_switch_date - current_date).days + 1
                 
-                # CITI Bridge over month-end
-                bridge_start = last_biz_day_before_month_end + timedelta(days=1)
+                # 🏦 BANKING REALITY: Switch to CITI BEFORE month-end approach
+                if days_before_switch > 1:
+                    # Pre-switch segment (standard rate until switch day)
+                    pre_switch_days = days_before_switch - 1  # Stop 1 day before month-end
+                    if pre_switch_days > 0:
+                        pre_segment = LoanSegment(
+                            bank=bank_name,
+                            bank_class=bank_class,
+                            rate=standard_rate,
+                            days=pre_switch_days,
+                            start_date=current_date,
+                            end_date=current_date + timedelta(days=pre_switch_days - 1),
+                            interest=self.calculate_interest(principal, standard_rate, pre_switch_days),
+                            crosses_month=False
+                        )
+                        pre_segment.banking_logic = f"Pre-switch segment - standard rate before tactical switch"
+                        pre_segment.compliance_status = "FULLY_COMPLIANT"
+                        segments.append(pre_segment)
+                        
+                        self.log_message(f"✅ Pre-switch: {pre_switch_days} days @ {standard_rate}%", "INFO")
+                        remaining_days -= pre_switch_days
+                        current_date = current_date + timedelta(days=pre_switch_days)
+                
+                # 🚨 TACTICAL CITI SWITCH: Switch BEFORE weekend/month-end
+                switch_start = safe_switch_date  # Start CITI on last business day
                 bridge_end = first_biz_day_after_month_end - timedelta(days=1)
-                bridge_days = (bridge_end - bridge_start).days + 1
+                total_citi_days = (bridge_end - switch_start).days + 1
                 
-                if bridge_days > 0 and remaining_days > 0:
+                if total_citi_days > 0 and remaining_days > 0:
+                    actual_citi_days = min(total_citi_days, remaining_days)
+                    
                     bridge_segment = LoanSegment(
-                        bank="CITI Call (Month-End Bridge)",
-                        bank_class="citi-emergency",
+                        bank="CITI Call (Tactical Switch)",
+                        bank_class="citi-tactical",
                         rate=7.75,  # CITI Call rate
-                        days=min(bridge_days, remaining_days),
-                        start_date=bridge_start,
-                        end_date=bridge_start + timedelta(days=min(bridge_days, remaining_days) - 1),
-                        interest=self.calculate_interest(principal, 7.75, min(bridge_days, remaining_days)),
+                        days=actual_citi_days,
+                        start_date=switch_start,
+                        end_date=switch_start + timedelta(days=actual_citi_days - 1),
+                        interest=self.calculate_interest(principal, 7.75, actual_citi_days),
                         crosses_month=True
                     )
-                    bridge_segment.banking_logic = f"Tactical CITI bridge over month-end weekend"
-                    bridge_segment.compliance_status = "EMERGENCY_COMPLIANT"
+                    bridge_segment.banking_logic = f"Tactical CITI switch - started BEFORE weekend to avoid being stuck"
+                    bridge_segment.compliance_status = "TACTICAL_COMPLIANT"
                     segments.append(bridge_segment)
                     
-                    self.log_message(f"⚠️ CITI Bridge: {min(bridge_days, remaining_days)} days @ 7.75%", "SWITCH")
-                    remaining_days -= min(bridge_days, remaining_days)
+                    self.log_message(f"🚨 TACTICAL SWITCH: {actual_citi_days} days @ 7.75% (switched BEFORE weekend)", "SWITCH")
+                    remaining_days -= actual_citi_days
                     current_date = first_biz_day_after_month_end
                 
                 continue
