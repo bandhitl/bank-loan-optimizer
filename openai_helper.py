@@ -134,7 +134,8 @@ FOR each violation:
     {{
       "segment": 0,
       "bank": "SCBT 1w",
-      "period": "2025-05-22 to 2025-05-29",
+      "start_date": "2025-05-22",
+      "end_date": "2025-05-29",
       "days": 8,
       "rate": {standard_rate},
       "interest": 45183562,
@@ -144,7 +145,8 @@ FOR each violation:
     {{
       "segment": 1,
       "bank": "CITI Call", 
-      "period": "2025-05-30 to 2025-06-02",
+      "start_date": "2025-05-30",
+      "end_date": "2025-06-02",
       "days": 4,
       "rate": 7.75,
       "interest": 32012329,
@@ -253,15 +255,15 @@ PENALTY_RATE: {cross_month_rate}%
         # Check if loan ever crosses month-end
         loan_crosses = False
         for seg in segments:
-            start_date = datetime.strptime(seg["start_date"] if "start_date" in seg else seg["period"].split(" to ")[0], "%Y-%m-%d")
-            end_date = datetime.strptime(seg["end_date"] if "end_date" in seg else seg["period"].split(" to ")[1], "%Y-%m-%d")
+            start_date = datetime.strptime(seg["start_date"] if "start_date" in seg else seg.get("start_date", "1900-01-01"), "%Y-%m-%d")
+            end_date = datetime.strptime(seg["end_date"] if "end_date" in seg else seg.get("end_date", "1900-01-01"), "%Y-%m-%d")
             if start_date <= month_end and end_date > month_end:
                 loan_crosses = True
                 break
         
         for i, seg in enumerate(segments):
-            start_date = datetime.strptime(seg["start_date"] if "start_date" in seg else seg["period"].split(" to ")[0], "%Y-%m-%d")
-            end_date = datetime.strptime(seg["end_date"] if "end_date" in seg else seg["period"].split(" to ")[1], "%Y-%m-%d")
+            start_date = datetime.strptime(seg["start_date"] if "start_date" in seg else seg.get("start_date", "1900-01-01"), "%Y-%m-%d")
+            end_date = datetime.strptime(seg["end_date"] if "end_date" in seg else seg.get("end_date", "1900-01-01"), "%Y-%m-%d")
             rate = seg["rate"]
             
             # Banking Rule 1: No cross-month segments with standard rate
@@ -404,6 +406,11 @@ CRITICAL: Month-end crossings require penalty rates due to regulatory reporting 
         except Exception as e:
             return False, segments, f"Banking Expert System critical error: {str(e)}"
 
+def check_openai_availability():
+    """Check if OpenAI API is properly configured"""
+    expert = SuperAdvancedBankExpert()
+    return expert.is_available()
+
 def apply_super_advanced_corrections(original_segments, principal: float, month_end_str: str, 
                                    cross_month_rate: float = 9.20, standard_rate: float = 6.20):
     """
@@ -448,20 +455,13 @@ def apply_super_advanced_corrections(original_segments, principal: float, month_
         
         corrected_segments = []
         for seg_data in corrected_data:
-            # Handle both formats (banking response vs standard response)
-            if "period" in seg_data:
-                start_str, end_str = seg_data["period"].split(" to ")
-            else:
-                start_str = seg_data["start_date"]
-                end_str = seg_data["end_date"]
-            
             corrected_segments.append(LoanSegment(
                 bank=seg_data["bank"],
                 bank_class=seg_data.get("banking_status", "banking_corrected"),
                 rate=seg_data["rate"],
                 days=seg_data["days"],
-                start_date=datetime.strptime(start_str, '%Y-%m-%d'),
-                end_date=datetime.strptime(end_str, '%Y-%m-%d'),
+                start_date=datetime.strptime(seg_data["start_date"], '%Y-%m-%d'),
+                end_date=datetime.strptime(seg_data["end_date"], '%Y-%m-%d'),
                 interest=seg_data["interest"],
                 crosses_month=seg_data.get("crosses_month", False)
             ))
@@ -470,11 +470,6 @@ def apply_super_advanced_corrections(original_segments, principal: float, month_
         
     except Exception as e:
         return False, original_segments, f"Failed to apply banking corrections: {str(e)}"
-
-def check_openai_availability():
-    """Check if OpenAI API is properly configured"""
-    expert = SuperAdvancedBankExpert()
-    return expert.is_available()
 
 # Legacy compatibility functions
 def apply_enhanced_banking_corrections(original_segments, principal: float, month_end_str: str, 
