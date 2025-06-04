@@ -90,169 +90,223 @@ class BankLoanCalculator:
         return principal * (rate / 100) * (days / 365)
     
     def crosses_month_end(self, start_date: datetime, end_date: datetime, month_end: datetime) -> bool:
-        """Check if loan segment crosses the specified month end"""
-        return start_date <= month_end < end_date
+        """
+        Check if loan segment crosses the specified month end
+        
+        CRITICAL: A segment crosses month-end if it starts on or before month-end
+        but ends AFTER month-end
+        """
+        return start_date <= month_end and end_date > month_end
     
     def create_standard_segments(self, start_date: datetime, total_days: int, month_end: datetime,
                                segment_size: int, bank_name: str, bank_class: str,
                                standard_rate: float, cross_month_rate: float,
                                principal: float, strategy_name: str) -> List[LoanSegment]:
         """
-        Create standard loan segments for a given bank strategy
+        Create standard loan segments with STRICT cross-month penalty avoidance
         
-        REALISTIC BANK OPERATIONS:
-        - Interest accrues continuously (including weekends/holidays)
-        - Bank transactions can ONLY occur on business days
-        - Segment transitions must be planned to avoid weekends/holidays
-        - CRITICAL: Avoid cross-month penalties by strategic segment planning
+        CRITICAL RULES:
+        1. If segment would cross month-end → END BEFORE month-end OR use CITI Call
+        2. Cross-month penalty (9.20%) is ALWAYS higher than standard rates
+        3. Better to switch banks than pay penalty
         """
         segments = []
         remaining_days = total_days
         current_date = start_date
+        original_bank_name = bank_name  # Keep reference to original bank
         
         self.log_message(f"Creating Standard Segments for {strategy_name}", "INFO")
+        self.log_message(f"Cross-month penalty rate: {cross_month_rate:.2f}%, Standard rate: {standard_rate:.2f}%", "INFO")
         
         while remaining_days > 0:
+            # Start with standard segment size
             segment_days = min(segment_size, remaining_days)
-            segment_end_date = current_date + timedelta(days=segment_days-1)
+            proposed_end_date = current_date + timedelta(days=segment_days-1)
             
-            # CRITICAL: Check if segment would cross month-end (triggering penalty rate)
-            would_cross_month_end = self.crosses_month_end(current_date, segment_end_date, month_end)
+            # Reset bank settings for each segment
+            current_bank_name = original_bank_name
+            current_bank_class = bank_class
+            current_standard_rate = standard_rate
+            current_cross_month_rate = cross_month_rate
             
-            if would_cross_month_end and cross_month_rate > standard_rate:
-                # Calculate days to month-end
-                days_to_month_end = (month_end - current_date).days + 1
+            self.log_message(
+                f"Evaluating segment: {current_date.strftime('%Y-%m-%d')} → {proposed_end_date.strftime('%Y-%m-%d')} " +
+                f"({segment_days} days) with {current_bank_name}", "INFO"
+            )
+            
+            # STEP 1: Check for cross-month penalty risk
+            if self.crosses_month_end(current_date, proposed_end_date, month_end):
+                self.log_message(
+                    f"⚠️  CROSS-MONTH DETECTED: Segment {current_date.strftime('%Y-%m-%d')} → {proposed_end_date.strftime('%Y-%m-%d')} " +
+                    f"crosses month-end {month_end.strftime('%Y-%m-%d')}", "WARN"
+                )
                 
-                if days_to_month_end > 0 and days_to_month_end < segment_days:
-                    # Strategy 1: End segment before month-end to avoid penalty
-                    pre_month_end_date = month_end
+                # Calculate days until month-end
+                days_until_month_end = (month_end - current_date).days + 1
+                
+                if days_until_month_end > 0 and days_until_month_end < segment_days:
+                    # Option 1: End segment at month-end (avoid cross-month)
+                    option1_end_date = month_end
+                    option1_days = days_until_month_end
                     
-                    # Ensure we end on a business day
-                    if self.is_weekend_or_holiday(pre_month_end_date):
+                    # Check if month-end is a business day
+                    if self.is_weekend_or_holiday(month_end):
                         # Find last business day before month-end
-                        while self.is_weekend_or_holiday(pre_month_end_date) and pre_month_end_date >= current_date:
-                            pre_month_end_date -= timedelta(days=1)
+                        business_end_date = month_end
+                        while self.is_weekend_or_holiday(business_end_date) and business_end_date >= current_date:
+                            business_end_date -= timedelta(days=1)
+                        
+                        if business_end_date >= current_date:
+                            option1_end_date = business_end_date
+                            option1_days = (business_end_date - current_date).days + 1
+                            self.log_message(
+                                f"Month-end {month_end.strftime('%Y-%m-%d')} is non-business day, " +
+                                f"moving to {business_end_date.strftime('%Y-%m-%d')}", "WEEKEND"
+                            )
                     
-                    if pre_month_end_date >= current_date:
-                        # End segment before month-end
-                        segment_days = (pre_month_end_date - current_date).days + 1
-                        segment_end_date = pre_month_end_date
+                    # Option 2: Use CITI Call for entire segment (no penalty risk)
+                    option2_bank = 'CITI Call'
+                    option2_rate = 7.75
+                    
+                    # Calculate costs for both options
+                    option1_cost = self.calculate_interest(principal, current_standard_rate, option1_days)
+                    option2_cost = self.calculate_interest(principal, option2_rate, segment_days)
+                    
+                    self.log_message(
+                        f"Option 1: End before month-end ({option1_days} days @ {current_standard_rate:.2f}%) = {option1_cost:,.0f}", "INFO"
+                    )
+                    self.log_message(
+                        f"Option 2: Use CITI Call ({segment_days} days @ {option2_rate:.2f}%) = {option2_cost:,.0f}", "INFO"
+                    )
+                    
+                    # Choose better option
+                    if option1_cost <= option2_cost and option1_days > 0:
+                        # Choose Option 1: End before month-end
+                        segment_days = option1_days
+                        proposed_end_date = option1_end_date
                         
                         self.log_message(
-                            f"CROSS-MONTH AVOIDANCE: Shortened {bank_name} segment to {segment_days} days " +
-                            f"ending {segment_end_date.strftime('%Y-%m-%d')} to avoid {cross_month_rate:.2f}% penalty", "SWITCH"
+                            f"✅ CROSS-MONTH AVOIDANCE: Ending {current_bank_name} segment at {proposed_end_date.strftime('%Y-%m-%d')} " +
+                            f"to avoid {current_cross_month_rate:.2f}% penalty", "SWITCH"
                         )
                     else:
-                        # Can't avoid cross-month, switch to CITI Call
-                        use_bank_name = 'CITI Call'
-                        use_bank_class = 'citi-call'
-                        use_standard_rate = 7.75
-                        use_cross_month_rate = 7.75
+                        # Choose Option 2: Use CITI Call
+                        current_bank_name = option2_bank
+                        current_bank_class = 'citi-call'
+                        current_standard_rate = option2_rate
+                        current_cross_month_rate = option2_rate
                         
                         self.log_message(
-                            f"CROSS-MONTH UNAVOIDABLE: Switching to CITI Call (7.75%) instead of " +
-                            f"{bank_name} cross-month penalty ({cross_month_rate:.2f}%)", "SWITCH"
+                            f"✅ BANK SWITCH: Using {current_bank_name} @ {current_standard_rate:.2f}% " +
+                            f"instead of {original_bank_name} cross-month penalty @ {cross_month_rate:.2f}%", "SWITCH"
                         )
-                        
-                        # Reset bank variables for this segment
-                        bank_name = use_bank_name
-                        bank_class = use_bank_class
-                        standard_rate = use_standard_rate
-                        cross_month_rate = use_cross_month_rate
                 else:
-                    # Segment fully crosses month or starts after month-end
-                    if current_date > month_end:
-                        # Already past month-end, use CITI Call for a few days
-                        days_since_month_end = (current_date - month_end).days
-                        
-                        if days_since_month_end <= 2:
-                            bank_name = 'CITI Call'
-                            bank_class = 'citi-call'
-                            standard_rate = 7.75
-                            cross_month_rate = 7.75
-                            
-                            # Limit CITI Call to reasonable duration
-                            citi_duration = min(3 - days_since_month_end, segment_days, remaining_days)
-                            segment_days = citi_duration
-                            segment_end_date = current_date + timedelta(days=citi_duration-1)
-                            
-                            self.log_message(f"POST-MONTH: Using CITI Call for {segment_days} days after month-end", "SWITCH")
-                    else:
+                    # Segment starts after month-end or fully crosses
+                    if current_date <= month_end:
                         # Segment fully crosses month-end, use CITI Call
-                        bank_name = 'CITI Call'
-                        bank_class = 'citi-call'
-                        standard_rate = 7.75
-                        cross_month_rate = 7.75
+                        current_bank_name = 'CITI Call'
+                        current_bank_class = 'citi-call'
+                        current_standard_rate = 7.75
+                        current_cross_month_rate = 7.75
                         
-                        self.log_message(f"FULL CROSS-MONTH: Using CITI Call for entire segment crossing month-end", "SWITCH")
+                        self.log_message(
+                            f"✅ FULL CROSS-MONTH: Using CITI Call @ 7.75% instead of " +
+                            f"{original_bank_name} penalty @ {cross_month_rate:.2f}%", "SWITCH"
+                        )
             
-            # Now check if segment end falls on weekend/holiday (for bank transaction)
-            if self.is_weekend_or_holiday(segment_end_date) and segment_days > 1:
-                adjusted_days = segment_days
-                adjusted_end_date = segment_end_date
+            # STEP 2: Handle post-month-end logic
+            if current_date > month_end:
+                days_since_month_end = (current_date - month_end).days
                 
-                # Move segment end to last business day
+                if days_since_month_end <= 3:  # Use CITI Call for few days after month-end
+                    current_bank_name = 'CITI Call'
+                    current_bank_class = 'citi-call'
+                    current_standard_rate = 7.75
+                    current_cross_month_rate = 7.75
+                    
+                    # Limit CITI Call duration
+                    max_citi_days = min(4 - days_since_month_end, segment_days)
+                    if max_citi_days < segment_days:
+                        segment_days = max_citi_days
+                        proposed_end_date = current_date + timedelta(days=segment_days-1)
+                    
+                    self.log_message(f"POST-MONTH: Using CITI Call for {segment_days} days after month-end", "SWITCH")
+            
+            # STEP 3: Handle weekend/holiday business day constraints
+            if self.is_weekend_or_holiday(proposed_end_date) and segment_days > 1:
+                adjusted_days = segment_days
+                adjusted_end_date = proposed_end_date
+                
+                # Move to last business day
                 while self.is_weekend_or_holiday(adjusted_end_date) and adjusted_days > 1:
                     adjusted_days -= 1
                     adjusted_end_date = current_date + timedelta(days=adjusted_days-1)
                 
                 if adjusted_days != segment_days:
-                    weekend_type = "weekend" if segment_end_date.weekday() >= 5 else "holiday"
+                    weekend_type = "weekend" if proposed_end_date.weekday() >= 5 else "holiday"
                     self.log_message(
-                        f"BANK TRANSACTION TIMING: Moved segment end from {segment_end_date.strftime('%Y-%m-%d')} ({weekend_type}) " +
-                        f"to {adjusted_end_date.strftime('%Y-%m-%d')} for business day transaction", "WEEKEND"
+                        f"BUSINESS DAY: Moved segment end from {proposed_end_date.strftime('%Y-%m-%d')} ({weekend_type}) " +
+                        f"to {adjusted_end_date.strftime('%Y-%m-%d')}", "WEEKEND"
                     )
                     segment_days = adjusted_days
-                    segment_end_date = adjusted_end_date
+                    proposed_end_date = adjusted_end_date
             
-            # Calculate effective rate after all adjustments
-            will_cross_month = self.crosses_month_end(current_date, segment_end_date, month_end)
-            effective_rate = cross_month_rate if will_cross_month and cross_month_rate is not None else standard_rate
-            effective_bank_class = bank_class + '-cross' if will_cross_month and cross_month_rate is not None else bank_class
+            # STEP 4: Final cross-month check and rate determination
+            final_crosses_month = self.crosses_month_end(current_date, proposed_end_date, month_end)
             
-            if will_cross_month and cross_month_rate > standard_rate:
+            if final_crosses_month:
+                # This should not happen if our logic is correct, but safety check
+                effective_rate = current_cross_month_rate
+                effective_bank_class = current_bank_class + '-cross'
+                
                 self.log_message(
-                    f"CROSS-MONTH PENALTY APPLIED: {bank_name} segment uses {cross_month_rate:.2f}% " +
-                    f"instead of {standard_rate:.2f}% due to month-end crossing", "WARN"
+                    f"🚨 WARNING: Segment still crosses month-end! Using penalty rate {effective_rate:.2f}%", "WARN"
                 )
+            else:
+                effective_rate = current_standard_rate
+                effective_bank_class = current_bank_class
             
-            # Create segment
+            # STEP 5: Create the segment
+            self.log_message(
+                f"Creating segment: {current_bank_name} {current_date.strftime('%Y-%m-%d')} → {proposed_end_date.strftime('%Y-%m-%d')} " +
+                f"({segment_days} days @ {effective_rate:.2f}%)", "INFO"
+            )
+            
             segments.append(LoanSegment(
-                bank=bank_name,
+                bank=current_bank_name,
                 bank_class=effective_bank_class,
                 rate=effective_rate,
                 days=segment_days,
                 start_date=current_date,
-                end_date=segment_end_date,
+                end_date=proposed_end_date,
                 interest=self.calculate_interest(principal, effective_rate, segment_days),
-                crosses_month=will_cross_month
+                crosses_month=final_crosses_month
             ))
             
-            # Move to next segment date
-            next_date = segment_end_date + timedelta(days=1)
+            # STEP 6: Move to next segment
+            next_date = proposed_end_date + timedelta(days=1)
             
-            # Handle weekend/holiday gap for next segment
+            # Handle weekend gap if needed
             if self.is_weekend_or_holiday(next_date) and remaining_days - segment_days > 0:
                 weekend_type = "weekend" if next_date.weekday() >= 5 else "holiday"
                 
-                # Find next business day for bank transaction
+                # Find next business day
                 business_start_date = next_date
                 while self.is_weekend_or_holiday(business_start_date):
                     business_start_date += timedelta(days=1)
                 
-                # Calculate gap days
                 gap_days = (business_start_date - next_date).days
                 
                 if gap_days > 0 and gap_days <= remaining_days - segment_days:
                     self.log_message(
-                        f"BANK CLOSURE: Gap period from {next_date.strftime('%Y-%m-%d')} " +
-                        f"to {business_start_date.strftime('%Y-%m-%d')} ({gap_days} days)", "WEEKEND"
+                        f"GAP: Adding {gap_days}-day gap from {next_date.strftime('%Y-%m-%d')} " +
+                        f"to {business_start_date.strftime('%Y-%m-%d')}", "WEEKEND"
                     )
                     
-                    # Create gap segment with same bank (interest continues)
+                    # Create gap segment
                     gap_end_date = business_start_date - timedelta(days=1)
                     gap_segment = LoanSegment(
-                        bank=bank_name + " (Gap)",
+                        bank=current_bank_name + " (Gap)",
                         bank_class=effective_bank_class,
                         rate=effective_rate,
                         days=gap_days,
@@ -270,6 +324,16 @@ class BankLoanCalculator:
             remaining_days -= segment_days
         
         self.log_message(f"Completed {strategy_name}: {len(segments)} segments", "INFO")
+        
+        # Final validation
+        cross_month_segments = [s for s in segments if s.crosses_month]
+        if cross_month_segments:
+            self.log_message(f"🚨 FINAL WARNING: {len(cross_month_segments)} segments still cross month-end!", "WARN")
+            for seg in cross_month_segments:
+                self.log_message(
+                    f"  - {seg.bank}: {seg.start_date.strftime('%Y-%m-%d')} → {seg.end_date.strftime('%Y-%m-%d')} @ {seg.rate:.2f}%", "WARN"
+                )
+        
         return segments
     
     def calculate_optimal_strategy(self, principal: float, total_days: int, start_date: datetime,
