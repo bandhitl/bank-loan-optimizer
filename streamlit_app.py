@@ -39,97 +39,176 @@ st.markdown("""
     border-radius: 0.5rem;
     border-left: 4px solid #ffc107;
 }
+.error-highlight {
+    background-color: #f8d7da;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    border-left: 4px solid #dc3545;
+}
 </style>
 """, unsafe_allow_html=True)
 
 def format_currency(amount):
     """Format currency in Indonesian Rupiah"""
-    if amount == float('inf') or pd.isna(amount):
+    if amount == float('inf') or pd.isna(amount) or amount is None:
         return "N/A"
-    return f"Rp {amount:,.0f}"
+    try:
+        return f"Rp {amount:,.0f}"
+    except (ValueError, TypeError):
+        return "N/A"
 
 def format_percentage(rate):
     """Format percentage"""
-    if rate == float('inf') or pd.isna(rate):
+    if rate == float('inf') or pd.isna(rate) or rate is None:
         return "N/A"
-    return f"{rate:.2f}%"
+    try:
+        return f"{rate:.2f}%"
+    except (ValueError, TypeError):
+        return "N/A"
 
 def create_timeline_chart(segments):
     """Create timeline visualization using Plotly"""
-    if not segments:
+    if not segments or len(segments) == 0:
         return None
     
-    # Prepare data for timeline
-    timeline_data = []
-    for i, segment in enumerate(segments):
-        timeline_data.append({
-            'Segment': f"Segment {i+1}",
-            'Bank': segment.bank,
-            'Start': segment.start_date,
-            'End': segment.end_date + timedelta(days=1),  # Add 1 day for proper visualization
-            'Days': segment.days,
-            'Rate': segment.rate,
-            'Interest': segment.interest,
-            'CrossesMonth': segment.crosses_month
-        })
+    try:
+        # Prepare data for timeline
+        timeline_data = []
+        for i, segment in enumerate(segments):
+            timeline_data.append({
+                'Segment': f"Segment {i+1}",
+                'Bank': segment.bank,
+                'Start': segment.start_date,
+                'End': segment.end_date + timedelta(days=1),  # Add 1 day for proper visualization
+                'Days': segment.days,
+                'Rate': segment.rate,
+                'Interest': segment.interest,
+                'CrossesMonth': segment.crosses_month
+            })
+        
+        df = pd.DataFrame(timeline_data)
+        
+        # Create Gantt chart
+        fig = px.timeline(
+            df, 
+            x_start="Start", 
+            x_end="End", 
+            y="Segment",
+            color="Bank",
+            hover_data=["Days", "Rate", "Interest"],
+            title="Loan Timeline"
+        )
+        
+        fig.update_layout(
+            height=400,
+            xaxis_title="Date",
+            yaxis_title="Loan Segments"
+        )
+        
+        return fig
     
-    df = pd.DataFrame(timeline_data)
-    
-    # Create Gantt chart
-    fig = px.timeline(
-        df, 
-        x_start="Start", 
-        x_end="End", 
-        y="Segment",
-        color="Bank",
-        hover_data=["Days", "Rate", "Interest"],
-        title="Loan Timeline"
-    )
-    
-    fig.update_layout(
-        height=400,
-        xaxis_title="Date",
-        yaxis_title="Loan Segments"
-    )
-    
-    return fig
+    except Exception as e:
+        st.error(f"Error creating timeline chart: {str(e)}")
+        return None
 
 def create_comparison_chart(strategies):
     """Create comparison chart of strategies"""
-    valid_strategies = [s for s in strategies if s.is_valid and s.total_interest != float('inf')]
-    
-    if not valid_strategies:
+    if not strategies:
         return None
     
-    strategy_data = []
-    for strategy in valid_strategies:
-        strategy_data.append({
-            'Strategy': strategy.name,
-            'Total Interest': strategy.total_interest,
-            'Average Rate': strategy.average_rate,
-            'Multi-Bank': strategy.uses_multi_banks,
-            'Crosses Month': strategy.crosses_month
-        })
+    try:
+        valid_strategies = [s for s in strategies if s.is_valid and s.total_interest != float('inf')]
+        
+        if not valid_strategies:
+            return None
+        
+        strategy_data = []
+        for strategy in valid_strategies:
+            strategy_data.append({
+                'Strategy': strategy.name,
+                'Total Interest': strategy.total_interest,
+                'Average Rate': strategy.average_rate,
+                'Multi-Bank': strategy.uses_multi_banks,
+                'Crosses Month': strategy.crosses_month
+            })
+        
+        df = pd.DataFrame(strategy_data)
+        
+        # Create bar chart
+        fig = px.bar(
+            df, 
+            x='Strategy', 
+            y='Total Interest',
+            color='Average Rate',
+            title="Strategy Comparison - Total Interest Cost",
+            hover_data=['Multi-Bank', 'Crosses Month']
+        )
+        
+        fig.update_layout(
+            height=500,
+            xaxis_title="Strategy",
+            yaxis_title="Total Interest (IDR)"
+        )
+        
+        return fig
     
-    df = pd.DataFrame(strategy_data)
+    except Exception as e:
+        st.error(f"Error creating comparison chart: {str(e)}")
+        return None
+
+def check_openai_status():
+    """Check OpenAI API availability with proper error handling"""
+    try:
+        # ✅ FIXED: Correct import from openai_helper.py (not openai_logic_helper)
+        from openai_helper import check_openai_availability
+        return check_openai_availability(), None
+    except ImportError as e:
+        return False, f"OpenAI helper module not found: {str(e)}"
+    except Exception as e:
+        return False, f"Error checking OpenAI: {str(e)}"
+
+def perform_ai_analysis(segments, month_end_str):
+    """Perform AI analysis with proper error handling"""
+    try:
+        # ✅ FIXED: Correct import from openai_helper.py (not openai_logic_helper)
+        from openai_helper import analyze_loan_segments_with_ai
+        return analyze_loan_segments_with_ai(segments, month_end_str)
+    except ImportError as e:
+        return {"error": f"OpenAI helper module not found: {str(e)}"}
+    except Exception as e:
+        return {"error": f"AI analysis failed: {str(e)}"}
+
+def display_ai_analysis_status():
+    """Display OpenAI API status in sidebar"""
+    st.subheader("🤖 AI Analysis Status")
     
-    # Create bar chart
-    fig = px.bar(
-        df, 
-        x='Strategy', 
-        y='Total Interest',
-        color='Average Rate',
-        title="Strategy Comparison - Total Interest Cost",
-        hover_data=['Multi-Bank', 'Crosses Month']
-    )
+    openai_available, error_msg = check_openai_status()
     
-    fig.update_layout(
-        height=500,
-        xaxis_title="Strategy",
-        yaxis_title="Total Interest (IDR)"
-    )
+    if openai_available:
+        st.success("✅ OpenAI API available - AI analysis enabled")
+        st.info("💡 AI will automatically analyze loan calculations for logic errors")
+    else:
+        if error_msg and "not found" in error_msg:
+            st.error("❌ OpenAI helper module not available")
+            st.info("🔧 Make sure openai_helper.py is in the project directory")
+        else:
+            st.warning("⚠️ OpenAI API not configured")
+            st.info("🔧 To enable AI analysis, set `OPENAI_API_KEY` in Render environment variables")
+            
+            # Show detailed setup instructions
+            with st.expander("📋 Setup Instructions"):
+                st.markdown("""
+                **To enable AI analysis:**
+                1. Go to your Render dashboard
+                2. Navigate to your service settings
+                3. Go to Environment tab
+                4. Add environment variable: 
+                   - **Key**: `OPENAI_API_KEY`
+                   - **Value**: `your_openai_api_key`
+                5. Save and redeploy the service
+                """)
     
-    return fig
+    return openai_available
 
 def main():
     # Header
@@ -146,7 +225,8 @@ def main():
             max_value=100_000_000_000,
             value=38_000_000_000,
             step=1_000_000,
-            format="%d"
+            format="%d",
+            help="Enter the loan amount in Indonesian Rupiah"
         )
         
         # Loan period
@@ -155,7 +235,8 @@ def main():
             min_value=1,
             max_value=90,
             value=30,
-            step=1
+            step=1,
+            help="Enter the total number of days for the loan"
         )
         
         # Dates
@@ -163,56 +244,110 @@ def main():
         with col1:
             start_date = st.date_input(
                 "Start Date",
-                value=datetime(2025, 5, 29)
+                value=datetime(2025, 5, 29),
+                help="Loan start date"
             )
         with col2:
             month_end = st.date_input(
                 "Month End",
-                value=datetime(2025, 5, 31)
+                value=datetime(2025, 5, 31),
+                help="Month end date for cross-month calculation"
             )
         
         st.header("🏛️ Bank Interest Rates")
         
-        # Bank rates
-        citi_rate = st.number_input("CITI 3-Month Rate (%)", value=8.69, step=0.01, format="%.2f")
-        citi_call_rate = st.number_input("CITI Call Loan Rate (%)", value=7.75, step=0.01, format="%.2f")
-        scbt_1w_rate = st.number_input("SCBT 1-Week Rate (%)", value=6.20, step=0.01, format="%.2f")
-        scbt_2w_rate = st.number_input("SCBT 2-Week Rate (%)", value=6.60, step=0.01, format="%.2f")
-        cross_month_rate = st.number_input("General Cross-Month Rate (%)", value=9.20, step=0.01, format="%.2f")
+        # Bank rates with validation
+        citi_rate = st.number_input(
+            "CITI 3-Month Rate (%)", 
+            value=8.69, 
+            min_value=0.0, 
+            max_value=50.0,
+            step=0.01, 
+            format="%.2f",
+            help="CITI 3-month standard rate"
+        )
+        citi_call_rate = st.number_input(
+            "CITI Call Loan Rate (%)", 
+            value=7.75, 
+            min_value=0.0, 
+            max_value=50.0,
+            step=0.01, 
+            format="%.2f",
+            help="CITI call loan rate (used for cross-month avoidance)"
+        )
+        scbt_1w_rate = st.number_input(
+            "SCBT 1-Week Rate (%)", 
+            value=6.20, 
+            min_value=0.0, 
+            max_value=50.0,
+            step=0.01, 
+            format="%.2f",
+            help="SCBT 1-week term rate"
+        )
+        scbt_2w_rate = st.number_input(
+            "SCBT 2-Week Rate (%)", 
+            value=6.60, 
+            min_value=0.0, 
+            max_value=50.0,
+            step=0.01, 
+            format="%.2f",
+            help="SCBT 2-week term rate"
+        )
+        cross_month_rate = st.number_input(
+            "General Cross-Month Rate (%)", 
+            value=9.20, 
+            min_value=0.0, 
+            max_value=50.0,
+            step=0.01, 
+            format="%.2f",
+            help="Penalty rate for segments crossing month-end"
+        )
         
         st.subheader("Optional Banks")
         include_cimb = st.checkbox("Include CIMB", value=True)
-        cimb_rate = st.number_input("CIMB 1-Month Rate (%)", value=7.00, step=0.01, format="%.2f", disabled=not include_cimb)
+        cimb_rate = st.number_input(
+            "CIMB 1-Month Rate (%)", 
+            value=7.00, 
+            min_value=0.0, 
+            max_value=50.0,
+            step=0.01, 
+            format="%.2f", 
+            disabled=not include_cimb,
+            help="CIMB 1-month term rate"
+        )
         
         include_permata = st.checkbox("Include Permata", value=False)
-        permata_rate = st.number_input("Permata 1-Month Rate (%)", value=7.00, step=0.01, format="%.2f", disabled=not include_permata)
+        permata_rate = st.number_input(
+            "Permata 1-Month Rate (%)", 
+            value=7.00, 
+            min_value=0.0, 
+            max_value=50.0,
+            step=0.01, 
+            format="%.2f", 
+            disabled=not include_permata,
+            help="Permata 1-month term rate"
+        )
         
-        st.subheader("🤖 AI Analysis Status")
-        
-        # Check if OpenAI is available
-        try:
-            from openai_logic_helper import check_openai_availability
-            openai_available = check_openai_availability()
-            
-            if openai_available:
-                st.success("✅ OpenAI API available - AI analysis enabled")
-                st.info("💡 AI will automatically analyze loan calculations for logic errors")
-            else:
-                st.warning("⚠️ OpenAI API not configured")
-                st.info("🔧 To enable AI analysis, set `OPENAI_API_KEY` in Render environment variables")
-                
-        except ImportError:
-            st.error("❌ OpenAI helper module not available")
-            openai_available = False
-        except Exception as e:
-            st.error(f"❌ Error checking OpenAI: {str(e)}")
-            openai_available = False
+        # AI Analysis Status
+        openai_available = display_ai_analysis_status()
         
         # Calculate button
         calculate_button = st.button("🔄 Calculate Optimal Strategy", type="primary")
     
     # Main content
     if calculate_button:
+        # Input validation
+        if total_days <= 0:
+            st.error("❌ Loan period must be greater than 0 days")
+            return
+        
+        if principal <= 0:
+            st.error("❌ Principal amount must be greater than 0")
+            return
+        
+        if start_date >= month_end + timedelta(days=30):
+            st.warning("⚠️ Start date is far from month end - cross-month logic may not apply")
+        
         # Prepare data
         bank_rates = {
             'citi_3m': citi_rate,
@@ -235,27 +370,30 @@ def main():
         
         # Calculate
         with st.spinner("Calculating optimal loan strategy..."):
-            calculator = BankLoanCalculator()
-            all_strategies, best_strategy = calculator.calculate_optimal_strategy(
-                principal=principal,
-                total_days=total_days,
-                start_date=start_datetime,
-                month_end=month_end_datetime,
-                bank_rates=bank_rates,
-                include_banks=include_banks
-            )
-            
-            # AI Analysis if available
-            ai_analysis = None
-            if openai_available and best_strategy:
-                try:
-                    from openai_logic_helper import analyze_loan_segments_with_ai
-                    ai_analysis = analyze_loan_segments_with_ai(
-                        best_strategy.segments, 
-                        month_end.strftime('%Y-%m-%d')
-                    )
-                except Exception as e:
-                    st.warning(f"AI analysis failed: {str(e)}")
+            try:
+                calculator = BankLoanCalculator()
+                all_strategies, best_strategy = calculator.calculate_optimal_strategy(
+                    principal=principal,
+                    total_days=total_days,
+                    start_date=start_datetime,
+                    month_end=month_end_datetime,
+                    bank_rates=bank_rates,
+                    include_banks=include_banks
+                )
+                
+                # AI Analysis if available
+                ai_analysis = None
+                if openai_available and best_strategy and best_strategy.is_valid:
+                    with st.spinner("Running AI analysis..."):
+                        ai_analysis = perform_ai_analysis(
+                            best_strategy.segments, 
+                            month_end.strftime('%Y-%m-%d')
+                        )
+                
+            except Exception as e:
+                st.error(f"❌ Calculation failed: {str(e)}")
+                st.exception(e)  # Show full traceback for debugging
+                return
         
         if best_strategy and best_strategy.is_valid:
             # Find baseline for comparison
@@ -291,7 +429,7 @@ def main():
                 st.metric(
                     "Total Savings",
                     format_currency(savings),
-                    delta=format_percentage(-savings_percent)
+                    delta=format_percentage(-savings_percent) if savings_percent != 0 else None
                 )
             with col4:
                 st.metric(
@@ -315,87 +453,94 @@ def main():
             with tab2:
                 st.subheader("Detailed Loan Schedule")
                 
-                # Create schedule dataframe
-                schedule_data = []
-                cumulative_interest = 0
-                for i, segment in enumerate(best_strategy.segments, 1):
-                    cumulative_interest += segment.interest
-                    schedule_data.append({
-                        'Segment': i,
-                        'Bank': segment.bank,
-                        'Rate (%)': segment.rate,
-                        'Days': segment.days,
-                        'Start Date': segment.start_date.strftime('%Y-%m-%d'),
-                        'End Date': segment.end_date.strftime('%Y-%m-%d'),
-                        'Interest (IDR)': segment.interest,
-                        'Crosses Month': '🔴' if segment.crosses_month else '✅'
-                    })
+                try:
+                    # Create schedule dataframe
+                    schedule_data = []
+                    cumulative_interest = 0
+                    for i, segment in enumerate(best_strategy.segments, 1):
+                        cumulative_interest += segment.interest
+                        schedule_data.append({
+                            'Segment': i,
+                            'Bank': segment.bank,
+                            'Rate (%)': segment.rate,
+                            'Days': segment.days,
+                            'Start Date': segment.start_date.strftime('%Y-%m-%d'),
+                            'End Date': segment.end_date.strftime('%Y-%m-%d'),
+                            'Interest (IDR)': format_currency(segment.interest),
+                            'Crosses Month': '🔴' if segment.crosses_month else '✅'
+                        })
+                    
+                    schedule_df = pd.DataFrame(schedule_data)
+                    
+                    # Style the dataframe
+                    def highlight_cross_month(row):
+                        return ['background-color: #fff3cd' if row['Crosses Month'] == '🔴' else '' for _ in row]
+                    
+                    styled_df = schedule_df.style.apply(highlight_cross_month, axis=1)
+                    st.dataframe(styled_df, use_container_width=True)
+                    
+                    # Total row
+                    st.markdown(f"**Total Interest: {format_currency(cumulative_interest)}**")
+                    
+                    if any(s.crosses_month for s in best_strategy.segments):
+                        st.info("🔴 = Segment crosses month-end (higher rate applied)")
+                    
+                    # Add realistic bank operations info
+                    st.info("🏧 Bank transactions are scheduled only on business days. Interest continues to accrue during weekends/holidays.")
+                    st.info("📅 Gap periods may appear when bank transactions are delayed due to weekends/holidays.")
                 
-                schedule_df = pd.DataFrame(schedule_data)
-                
-                # Style the dataframe
-                def highlight_cross_month(row):
-                    return ['background-color: #fff3cd' if row['Crosses Month'] == '🔴' else '' for _ in row]
-                
-                styled_df = schedule_df.style.apply(highlight_cross_month, axis=1)
-                st.dataframe(styled_df, use_container_width=True)
-                
-                # Total row
-                st.markdown(f"**Total Interest: {format_currency(cumulative_interest)}**")
-                
-                if any(s.crosses_month for s in best_strategy.segments):
-                    st.info("🔴 = Segment crosses month-end (higher rate applied)")
-                
-                # Add realistic bank operations info
-                st.info("🏧 Bank transactions are scheduled only on business days. Interest continues to accrue during weekends/holidays.")
-                st.info("📅 Gap periods may appear when bank transactions are delayed due to weekends/holidays.")
-
+                except Exception as e:
+                    st.error(f"Error creating schedule table: {str(e)}")
             
             with tab3:
                 st.subheader("Strategy Comparison")
                 
-                # Comparison chart
-                comparison_fig = create_comparison_chart(all_strategies)
-                if comparison_fig:
-                    st.plotly_chart(comparison_fig, use_container_width=True)
-                
-                # Comparison table
-                comparison_data = []
-                for strategy in all_strategies:
-                    if strategy.is_valid and strategy.total_interest != float('inf'):
-                        savings_vs_baseline = baseline_interest - strategy.total_interest
-                        savings_pct = (savings_vs_baseline / baseline_interest * 100) if baseline_interest > 0 else 0
-                        status = "✅ Valid"
-                        if strategy.uses_multi_banks:
-                            status += " (Multi-Bank)"
-                    else:
-                        savings_vs_baseline = float('inf')
-                        savings_pct = 0
-                        status = "❌ Invalid"
+                try:
+                    # Comparison chart
+                    comparison_fig = create_comparison_chart(all_strategies)
+                    if comparison_fig:
+                        st.plotly_chart(comparison_fig, use_container_width=True)
                     
-                    comparison_data.append({
-                        'Strategy': strategy.name,
-                        'Avg Rate (%)': strategy.average_rate,
-                        'Total Interest': strategy.total_interest,
-                        'Savings (IDR)': savings_vs_baseline,
-                        '% Savings': savings_pct,
-                        'Status': status
-                    })
+                    # Comparison table
+                    comparison_data = []
+                    for strategy in all_strategies:
+                        if strategy.is_valid and strategy.total_interest != float('inf'):
+                            savings_vs_baseline = baseline_interest - strategy.total_interest
+                            savings_pct = (savings_vs_baseline / baseline_interest * 100) if baseline_interest > 0 else 0
+                            status = "✅ Valid"
+                            if strategy.uses_multi_banks:
+                                status += " (Multi-Bank)"
+                        else:
+                            savings_vs_baseline = float('inf')
+                            savings_pct = 0
+                            status = "❌ Invalid"
+                        
+                        comparison_data.append({
+                            'Strategy': strategy.name,
+                            'Avg Rate (%)': format_percentage(strategy.average_rate),
+                            'Total Interest': format_currency(strategy.total_interest),
+                            'Savings (IDR)': format_currency(savings_vs_baseline),
+                            '% Savings': format_percentage(savings_pct),
+                            'Status': status
+                        })
+                    
+                    comparison_df = pd.DataFrame(comparison_data)
+                    
+                    # Highlight best strategy
+                    def highlight_best(row):
+                        if row['Strategy'] == best_strategy.name:
+                            return ['background-color: #d4edda' for _ in row]
+                        return ['' for _ in row]
+                    
+                    styled_comparison = comparison_df.style.apply(highlight_best, axis=1)
+                    st.dataframe(styled_comparison, use_container_width=True)
                 
-                comparison_df = pd.DataFrame(comparison_data)
-                
-                # Highlight best strategy
-                def highlight_best(row):
-                    if row['Strategy'] == best_strategy.name:
-                        return ['background-color: #d4edda' for _ in row]
-                    return ['' for _ in row]
-                
-                styled_comparison = comparison_df.style.apply(highlight_best, axis=1)
-                st.dataframe(styled_comparison, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Error creating comparison: {str(e)}")
             
             with tab4:
                 st.subheader("Calculation Logs")
-                if calculator.calculation_log:
+                if hasattr(calculator, 'calculation_log') and calculator.calculation_log:
                     for log in calculator.calculation_log:
                         if "[ERROR]" in log:
                             st.error(log)
@@ -414,9 +559,11 @@ def main():
                 st.subheader("🤖 AI Logic Analysis")
                 if ai_analysis:
                     if "error" in ai_analysis:
+                        st.markdown('<div class="error-highlight">', unsafe_allow_html=True)
                         st.error(f"AI Analysis Error: {ai_analysis['error']}")
+                        st.markdown('</div>', unsafe_allow_html=True)
                     else:
-                        if "problematic_segments" in ai_analysis:
+                        if "problematic_segments" in ai_analysis and ai_analysis["problematic_segments"]:
                             st.write("**🚨 Problematic Segments Detected:**")
                             for seg_idx in ai_analysis["problematic_segments"]:
                                 st.error(f"Segment {seg_idx}: Logic error detected")
@@ -437,19 +584,39 @@ def main():
                             st.json(ai_analysis["corrected_segments"])
                 else:
                     if openai_available:
-                        st.info("🔄 AI analysis will run automatically when OpenAI API is configured")
+                        st.info("🔄 AI analysis will run automatically when calculation is performed")
                     else:
                         st.warning("🔑 Set OPENAI_API_KEY in Render environment variables to enable AI analysis")
-                        st.info("""
-                        **To enable AI analysis:**
-                        1. Go to your Render dashboard
-                        2. Navigate to your service settings
-                        3. Add environment variable: `OPENAI_API_KEY` = `your_api_key`
-                        4. Redeploy the service
-                        """)
+                        
+                        with st.expander("📋 How to Enable AI Analysis"):
+                            st.markdown("""
+                            **Steps to enable AI analysis:**
+                            1. Go to your Render dashboard
+                            2. Navigate to your service settings  
+                            3. Click on "Environment" tab
+                            4. Add new environment variable:
+                               - **Key**: `OPENAI_API_KEY`
+                               - **Value**: Your OpenAI API key
+                            5. Click "Save Changes"
+                            6. Redeploy your service
+                            
+                            **Get OpenAI API Key:**
+                            - Visit [platform.openai.com](https://platform.openai.com)
+                            - Create account or login
+                            - Go to API Keys section
+                            - Create new API key
+                            """)
         
         else:
             st.error("❌ Unable to calculate optimal strategy. Please check your inputs.")
+            
+            # Show available strategies for debugging
+            if all_strategies:
+                st.subheader("Available Strategies (for debugging)")
+                for strategy in all_strategies:
+                    status = "✅ Valid" if strategy.is_valid else "❌ Invalid"
+                    interest = format_currency(strategy.total_interest)
+                    st.write(f"- {strategy.name}: {status}, Interest: {interest}")
     
     else:
         # Welcome message
@@ -462,6 +629,7 @@ def main():
         - 🏦 Supporting multi-bank strategies
         - 📈 Maximizing your savings
         - 🏧 **Realistic bank transaction scheduling**
+        - 🤖 **AI-powered logic analysis** (when OpenAI API is configured)
         
         **How to use:**
         1. Set your loan parameters in the sidebar
@@ -476,6 +644,7 @@ def main():
         - **Automatic weekend/holiday avoidance** for bank transactions
         - Visual timeline and comparison charts
         - Detailed loan schedule breakdown
+        - **AI analysis** for logic validation (requires OpenAI API key)
         
         👈 **Get started by filling in the parameters on the left sidebar!**
         """)
@@ -489,6 +658,14 @@ def main():
         with col2:
             st.metric("Start Date", "2025-05-29")
             st.metric("Month End", "2025-05-31")
+        
+        # System status
+        st.subheader("🔧 System Status")
+        openai_status, _ = check_openai_status()
+        if openai_status:
+            st.success("✅ OpenAI API configured - AI analysis available")
+        else:
+            st.info("ℹ️ OpenAI API not configured - basic analysis only")
 
 if __name__ == "__main__":
     main()
