@@ -86,54 +86,97 @@ def format_percentage(rate):
         return "N/A"
 
 def display_banking_calendar(start_date, end_date, month_end):
-    """Display banking calendar with business days"""
-    st.subheader("🏦 Banking Calendar Analysis")
-    
-    calculator = RealBankingCalculator()
-    
-    # Key banking dates
-    last_biz_before = calculator.get_last_business_day_before(month_end + timedelta(days=1))
-    first_biz_after = calculator.get_first_business_day_after(month_end)
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric(
-            "Last Business Day Before Month-End",
-            last_biz_before.strftime('%Y-%m-%d'),
-            last_biz_before.strftime('%A')
-        )
-    
-    with col2:
-        month_end_status = "Weekend" if month_end.weekday() >= 5 else "Holiday" if calculator.is_holiday(month_end) else "Business Day"
-        st.metric(
-            "Month-End Date",
-            month_end.strftime('%Y-%m-%d'),
-            f"{month_end.strftime('%A')} ({month_end_status})"
-        )
-    
-    with col3:
-        st.metric(
-            "First Business Day After Month-End", 
-            first_biz_after.strftime('%Y-%m-%d'),
-            first_biz_after.strftime('%A')
-        )
-    
-    # Banking operational insights
-    st.markdown('<div class="business-day-info">', unsafe_allow_html=True)
-    st.info("🏦 **Banking Operational Reality:**")
-    
-    if month_end.weekday() >= 5:
-        st.write("• Month-end falls on weekend → Banks closed")
-        st.write("• Last switch opportunity: " + last_biz_before.strftime('%A %Y-%m-%d'))
-        st.write("• Next switch opportunity: " + first_biz_after.strftime('%A %Y-%m-%d'))
-    elif calculator.is_holiday(month_end):
-        st.write("• Month-end is a public holiday → Banks closed")
-        st.write("• Operational constraints apply")
-    else:
-        st.write("• Month-end is a business day → Normal operations")
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+    """Display banking calendar with business days - with comprehensive error handling"""
+    try:
+        st.subheader("🏦 Banking Calendar Analysis")
+        
+        if not isinstance(start_date, datetime) or not isinstance(end_date, datetime) or not isinstance(month_end, datetime):
+            st.error("❌ Invalid date types provided to banking calendar")
+            return
+        
+        # Initialize calculator with error handling
+        try:
+            calculator = RealBankingCalculator()
+        except Exception as e:
+            st.error(f"❌ Failed to initialize banking calculator: {e}")
+            return
+        
+        # Key banking dates with validation
+        try:
+            last_biz_before = calculator.get_last_business_day_before(month_end + timedelta(days=1))
+            first_biz_after = calculator.get_first_business_day_after(month_end)
+        except Exception as e:
+            st.error(f"❌ Failed to calculate business days: {e}")
+            # Fallback calculation
+            last_biz_before = month_end - timedelta(days=1)
+            first_biz_after = month_end + timedelta(days=1)
+        
+        # Display metrics with validation
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            try:
+                st.metric(
+                    "Last Business Day Before Month-End",
+                    last_biz_before.strftime('%Y-%m-%d'),
+                    last_biz_before.strftime('%A')
+                )
+            except Exception as e:
+                st.error(f"Error displaying last business day: {e}")
+        
+        with col2:
+            try:
+                if hasattr(calculator, 'is_holiday') and hasattr(calculator, 'is_business_day'):
+                    if month_end.weekday() >= 5:
+                        month_end_status = "Weekend"
+                    elif calculator.is_holiday(month_end):
+                        month_end_status = "Holiday"
+                    else:
+                        month_end_status = "Business Day"
+                else:
+                    month_end_status = "Unknown"
+                
+                st.metric(
+                    "Month-End Date",
+                    month_end.strftime('%Y-%m-%d'),
+                    f"{month_end.strftime('%A')} ({month_end_status})"
+                )
+            except Exception as e:
+                st.error(f"Error displaying month-end status: {e}")
+        
+        with col3:
+            try:
+                st.metric(
+                    "First Business Day After Month-End", 
+                    first_biz_after.strftime('%Y-%m-%d'),
+                    first_biz_after.strftime('%A')
+                )
+            except Exception as e:
+                st.error(f"Error displaying first business day: {e}")
+        
+        # Banking operational insights with error handling
+        try:
+            st.markdown('<div class="business-day-info">', unsafe_allow_html=True)
+            st.info("🏦 **Banking Operational Reality:**")
+            
+            if month_end.weekday() >= 5:
+                st.write("• Month-end falls on weekend → Banks closed")
+                st.write("• Last switch opportunity: " + last_biz_before.strftime('%A %Y-%m-%d'))
+                st.write("• Next switch opportunity: " + first_biz_after.strftime('%A %Y-%m-%d'))
+            elif hasattr(calculator, 'is_holiday') and calculator.is_holiday(month_end):
+                st.write("• Month-end is a public holiday → Banks closed")
+                st.write("• Operational constraints apply")
+            else:
+                st.write("• Month-end is a business day → Normal operations")
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+        except Exception as e:
+            st.warning(f"Could not display banking insights: {e}")
+            
+    except Exception as e:
+        st.error(f"❌ Critical error in banking calendar display: {e}")
+        st.write("Banking calendar could not be displayed, but calculation will continue")
 
 def create_real_banking_timeline(segments):
     """Create timeline with banking operational reality"""
@@ -292,19 +335,6 @@ def apply_real_banking_corrections(segments, principal, month_end_str, cross_mon
     except ImportError as e:
         return False, segments, f"Real Banking Expert module not found: {str(e)}"
     except Exception as e:
-        return False, segments, f"Real Banking Expert correction failed: {str(e)}"pt ImportError as e:
-        return False, f"Real Banking Expert module not found: {str(e)}"
-    except Exception as e:
-        return False, f"Error checking Real Banking Expert: {str(e)}"
-
-def apply_real_banking_corrections(segments, principal, month_end_str, cross_month_rate=9.20, standard_rate=6.20):
-    """Apply Real Banking Expert corrections"""
-    try:
-        from openai_helper import apply_enhanced_banking_corrections
-        return apply_enhanced_banking_corrections(segments, principal, month_end_str, cross_month_rate, standard_rate)
-    except ImportError as e:
-        return False, segments, f"Real Banking Expert module not found: {str(e)}"
-    except Exception as e:
         return False, segments, f"Real Banking Expert correction failed: {str(e)}"
 
 def display_real_banking_expert_status():
@@ -416,29 +446,48 @@ def main():
             # Show calculated loan period
             st.info(f"📅 **Loan Period:** {start_date.strftime('%Y-%m-%d')} → {loan_end_date.strftime('%Y-%m-%d')}")
             
-            # Auto-detect month-ends using simple logic
+def safe_detect_month_ends(start_date: datetime, end_date: datetime) -> list:
+    """Safely detect month-end crossings with comprehensive error handling"""
+    try:
+        month_ends = []
+        
+        if not isinstance(start_date, datetime) or not isinstance(end_date, datetime):
+            return []
+        
+        if start_date >= end_date:
+            return []
+        
+        current_month = start_date.replace(day=1)
+        safety_counter = 0
+        max_iterations = 12  # Maximum 1 year
+        
+        while current_month <= end_date + timedelta(days=31) and safety_counter < max_iterations:
+            safety_counter += 1
+            
             try:
-                start_datetime = datetime.combine(start_date, datetime.min.time())
-                end_datetime = datetime.combine(loan_end_date, datetime.min.time())
+                # Get last day of current month
+                if current_month.month == 12:
+                    next_month = current_month.replace(year=current_month.year + 1, month=1)
+                else:
+                    next_month = current_month.replace(month=current_month.month + 1)
                 
-                # Simple month-end detection
-                month_ends = []
-                current_month = start_datetime.replace(day=1)
+                last_day_of_month = next_month - timedelta(days=1)
                 
-                while current_month <= end_datetime + timedelta(days=31):
-                    # Get last day of current month
-                    if current_month.month == 12:
-                        next_month = current_month.replace(year=current_month.year + 1, month=1)
-                    else:
-                        next_month = current_month.replace(month=current_month.month + 1)
-                    
-                    last_day_of_month = next_month - timedelta(days=1)
-                    
-                    # Check if loan crosses this month-end
-                    if start_datetime <= last_day_of_month and end_datetime > last_day_of_month:
-                        month_ends.append(last_day_of_month)
-                    
-                    current_month = next_month
+                # Check if loan crosses this month-end
+                if start_date <= last_day_of_month and end_date > last_day_of_month:
+                    month_ends.append(last_day_of_month)
+                
+                current_month = next_month
+                
+            except Exception as e:
+                st.warning(f"Error processing month {current_month.strftime('%Y-%m')}: {e}")
+                break
+        
+        return sorted(month_ends)
+        
+    except Exception as e:
+        st.error(f"Critical error in month-end detection: {e}")
+        return []
                 
                 if month_ends:
                     month_end_strs = [me.strftime('%Y-%m-%d (%b)') for me in month_ends]
@@ -533,44 +582,62 @@ def main():
     
     # Main content area
     if calculate_button:
-        # Input validation
+        # Input validation with comprehensive checks
+        validation_errors = []
+        
         if total_days <= 0:
-            st.error("❌ Loan period must be greater than 0 days")
-            st.stop()
+            validation_errors.append("❌ Loan period must be greater than 0 days")
+        
+        if total_days > 365:
+            validation_errors.append("⚠️ Loan period over 1 year - please verify")
         
         if principal <= 0:
-            st.error("❌ Principal amount must be greater than 0")
-            st.stop()
+            validation_errors.append("❌ Principal amount must be greater than 0")
         
-        # Auto-detect month-ends in loan period using simple logic
+        if principal > 1_000_000_000_000:  # 1 trillion IDR
+            validation_errors.append("⚠️ Very large principal amount - please verify")
+        
+        if not start_date:
+            validation_errors.append("❌ Start date is required")
+        
+        # Check for reasonable date range
+        if start_date:
+            if start_date < datetime.now().date() - timedelta(days=365):
+                validation_errors.append("⚠️ Start date is more than 1 year in the past")
+            
+            if start_date > datetime.now().date() + timedelta(days=365):
+                validation_errors.append("⚠️ Start date is more than 1 year in the future")
+        
+        # Show validation errors
+        if validation_errors:
+            for error in validation_errors:
+                if "❌" in error:
+                    st.error(error)
+                else:
+                    st.warning(error)
+            
+            # Stop if critical errors
+            if any("❌" in error for error in validation_errors):
+                st.stop()
+        
+        # Auto-detect month-ends in loan period with safe error handling
         try:
             start_datetime = datetime.combine(start_date, datetime.min.time())
             loan_end_datetime = start_datetime + timedelta(days=total_days - 1)
             
-            # Simple month-end detection
-            detected_month_ends = []
-            current_month = start_datetime.replace(day=1)
-            
-            while current_month <= loan_end_datetime + timedelta(days=31):
-                # Get last day of current month
-                if current_month.month == 12:
-                    next_month = current_month.replace(year=current_month.year + 1, month=1)
-                else:
-                    next_month = current_month.replace(month=current_month.month + 1)
-                
-                last_day_of_month = next_month - timedelta(days=1)
-                
-                # Check if loan crosses this month-end
-                if start_datetime <= last_day_of_month and loan_end_datetime > last_day_of_month:
-                    detected_month_ends.append(last_day_of_month)
-                
-                current_month = next_month
+            # Use safe detection function
+            detected_month_ends = safe_detect_month_ends(start_datetime, loan_end_datetime)
             
         except Exception as e:
             st.error(f"Error in month-end detection: {e}")
             detected_month_ends = []
-            start_datetime = datetime.combine(start_date, datetime.min.time())
-            loan_end_datetime = start_datetime + timedelta(days=total_days - 1)
+            # Create fallback datetimes
+            try:
+                start_datetime = datetime.combine(start_date, datetime.min.time())
+                loan_end_datetime = start_datetime + timedelta(days=total_days - 1)
+            except:
+                st.error("Critical error in date conversion")
+                st.stop()
         
         # Use first detected month-end, or create a dummy far future date if none
         month_end_datetime = detected_month_ends[0] if detected_month_ends else datetime(2099, 12, 31)
@@ -1148,14 +1215,17 @@ def main():
         preview_start = datetime(2025, 5, 25)
         preview_end = preview_start + timedelta(days=30-1)
         
-        # Auto-detect preview month-end using simple logic
+        # Auto-detect preview month-end using simple logic only
         try:
-            preview_calc = RealBankingCalculator()
             preview_month_ends = []
             
-            # Simple detection for preview
+            # Simple detection for preview - no external function calls
             current_month = preview_start.replace(day=1)
-            while current_month <= preview_end + timedelta(days=31):
+            safety_counter = 0
+            
+            while current_month <= preview_end + timedelta(days=31) and safety_counter < 3:
+                safety_counter += 1
+                
                 if current_month.month == 12:
                     next_month = current_month.replace(year=current_month.year + 1, month=1)
                 else:
@@ -1185,7 +1255,11 @@ def main():
                 st.write("🏖️ Month-end detected")
                 st.write("❌ Banks may be closed")
             with col3:
-                next_biz = preview_calc.get_first_business_day_after(preview_month_end)
+                # Simple next business day calculation
+                next_biz = preview_month_end + timedelta(days=1)
+                while next_biz.weekday() >= 5:  # Skip weekends
+                    next_biz += timedelta(days=1)
+                
                 st.write(f"**{next_biz.strftime('%b %d (%A)')}**")
                 st.write("🏦 First business day")
                 st.write("✅ Can resume operations")
