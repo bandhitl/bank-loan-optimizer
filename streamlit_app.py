@@ -178,11 +178,11 @@ def check_bank_expert_status():
     except Exception as e:
         return False, f"Error checking Bank IT Expert: {str(e)}"
 
-def apply_expert_corrections(segments, principal, month_end_str):
-    """Apply Bank IT Expert auto-corrections"""
+def apply_expert_corrections(segments, principal, month_end_str, cross_month_rate=9.20, standard_rate=6.20):
+    """🔥 FIXED: Apply Bank IT Expert auto-corrections with user rates"""
     try:
-        from openai_helper import apply_advanced_corrections
-        return apply_advanced_corrections(segments, principal, month_end_str)
+        from openai_helper import apply_super_advanced_corrections
+        return apply_super_advanced_corrections(segments, principal, month_end_str, cross_month_rate, standard_rate)
     except ImportError as e:
         return False, segments, f"Bank IT Expert module not found: {str(e)}"
     except Exception as e:
@@ -454,10 +454,13 @@ def main():
                         st.write("✅ **No obvious problems to fix**")
                     st.markdown('</div>', unsafe_allow_html=True)
                 
+                # 🔥 FIXED: Pass user-provided rates to AI
                 corrected, corrected_segments, correction_explanation = apply_expert_corrections(
                     best_strategy.segments, 
                     principal,
-                    month_end.strftime('%Y-%m-%d')
+                    month_end.strftime('%Y-%m-%d'),
+                    cross_month_rate,  # Pass user's cross-month rate
+                    scbt_1w_rate      # Pass user's standard rate
                 )
                 
                 # 🔍 DEBUG: Show AI response
