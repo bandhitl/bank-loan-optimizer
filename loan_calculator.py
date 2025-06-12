@@ -365,19 +365,29 @@ class RealBankingCalculator:
         
         if crosses_month:
             self.log_message(f"🚨 General month-end crossing: {month_end.strftime('%Y-%m-%d')}", "WARN")
-            
+
             segments = []
-            
+
             # Days before month-end
-            days_before = (month_end - start_date).days
+            adj_start = start_date
+            while not self.is_business_day(adj_start):
+                adj_start = self.get_first_business_day_after(adj_start)
+            start_date = adj_start
+
+            days_before = (month_end - adj_start).days
             if days_before > 0:
+                pre_end = month_end - timedelta(days=1)
+                if not self.is_business_day(pre_end):
+                    pre_end = self.get_last_business_day_before(pre_end + timedelta(days=1))
+                    days_before = (pre_end - adj_start).days + 1
+
                 pre_seg = LoanSegment(
                     bank=bank_name,
                     bank_class=bank_class,
                     rate=standard_rate,
                     days=days_before,
-                    start_date=start_date,
-                    end_date=month_end - timedelta(days=1),
+                    start_date=adj_start,
+                    end_date=pre_end,
                     interest=self.calculate_interest(principal, standard_rate, days_before),
                     crosses_month=False
                 )
@@ -402,13 +412,22 @@ class RealBankingCalculator:
                 # Post-bridge segment
                 remaining_final = remaining_after_pre - bridge_days
                 if remaining_final > 0:
+                    post_start = month_end + timedelta(days=bridge_days)
+                    while not self.is_business_day(post_start):
+                        post_start = self.get_first_business_day_after(post_start)
+
+                    post_end = month_end + timedelta(days=bridge_days + remaining_final - 1)
+                    if not self.is_business_day(post_end):
+                        post_end = self.get_last_business_day_before(post_end + timedelta(days=1))
+                        remaining_final = (post_end - post_start).days + 1
+
                     post_seg = LoanSegment(
                         bank=f"{bank_name} (Post)",
                         bank_class=bank_class,
                         rate=standard_rate,
                         days=remaining_final,
-                        start_date=month_end + timedelta(days=bridge_days),
-                        end_date=month_end + timedelta(days=bridge_days + remaining_final - 1),
+                        start_date=post_start,
+                        end_date=post_end,
                         interest=self.calculate_interest(principal, standard_rate, remaining_final),
                         crosses_month=False
                     )
@@ -419,17 +438,26 @@ class RealBankingCalculator:
         # NO MONTH-END CROSSING: Simple segments
         return self._create_simple_segments(start_date, total_days, segment_size, bank_name, bank_class, standard_rate, principal)
     
-    def _create_simple_segments(self, start_date: datetime, total_days: int, segment_size: int, 
+    def _create_simple_segments(self, start_date: datetime, total_days: int, segment_size: int,
                                bank_name: str, bank_class: str, standard_rate: float, principal: float) -> List[LoanSegment]:
         """Create simple segments when no month-end crossing"""
         segments = []
         remaining_days = total_days
         current_date = start_date
-        
+
         while remaining_days > 0:
+            # Ensure segment starts on a business day
+            while not self.is_business_day(current_date):
+                current_date = self.get_first_business_day_after(current_date)
+
             segment_days = min(segment_size, remaining_days)
             end_date = current_date + timedelta(days=segment_days - 1)
-            
+
+            # Adjust end date to previous business day if needed
+            if not self.is_business_day(end_date):
+                end_date = self.get_last_business_day_before(end_date + timedelta(days=1))
+                segment_days = (end_date - current_date).days + 1
+
             segment = LoanSegment(
                 bank=bank_name,
                 bank_class=bank_class,
@@ -441,10 +469,10 @@ class RealBankingCalculator:
                 crosses_month=False
             )
             segments.append(segment)
-            
+
             remaining_days -= segment_days
-            current_date = end_date + timedelta(days=1)
-        
+            current_date = self.get_first_business_day_after(end_date)
+
         return segments
     
     def calculate_optimal_strategy(self, principal: float, total_days: int, start_date: datetime,
