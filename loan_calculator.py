@@ -74,8 +74,8 @@ class RealBankingCalculator:
         self.holidays_2025 = {
             '2025-01-01', '2025-01-29', '2025-03-14', '2025-03-29', '2025-03-31',
             '2025-04-09', '2025-05-01', '2025-05-12', '2025-05-29', '2025-06-01',
-            '2025-06-06', '2025-06-07', '2025-08-12', '2025-08-17', '2025-09-01',
-            '2025-11-10', '2025-12-25'
+            '2025-06-06', '2025-06-07', '2025-06-17', '2025-08-12', '2025-08-17',
+            '2025-09-01', '2025-11-10', '2025-12-25'
         }
         self.calculation_log = []
     
@@ -122,9 +122,11 @@ class RealBankingCalculator:
         current_date = start_date
         remaining_days = total_days
 
+        last_biz_day_before_me = self.get_last_business_day_before(month_end + timedelta(days=1))
+        next_biz_day_after_me = self.get_first_business_day_after(month_end)
+
         while remaining_days > 0:
             transaction_date = self.get_last_business_day_before(current_date + timedelta(days=1))
-            last_biz_day_before_me = self.get_last_business_day_before(month_end + timedelta(days=1))
 
             if not self.is_business_day(current_date):
                 next_biz_day = self.get_first_business_day_after(current_date - timedelta(days=1))
@@ -139,8 +141,7 @@ class RealBankingCalculator:
                 remaining_days -= days_to_bridge
                 continue
 
-            if current_date >= last_biz_day_before_me:
-                next_biz_day_after_me = self.get_first_business_day_after(month_end)
+            if last_biz_day_before_me <= current_date <= month_end:
                 days_in_danger = min(remaining_days, (next_biz_day_after_me - current_date).days)
                 if days_in_danger <= 0: break
 
@@ -153,6 +154,8 @@ class RealBankingCalculator:
                 continue
             
             days_until_danger = (last_biz_day_before_me - current_date).days
+            if days_until_danger < 0:
+                days_until_danger = remaining_days
             days_to_use = min(remaining_days, segment_max_days, days_until_danger)
             if days_to_use <= 0: break
 
