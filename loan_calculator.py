@@ -1,14 +1,18 @@
 """
 Bank Loan Optimization Calculator - Real Banking Operations
 Author: Real Banking Operations Expert
-Version: 7.0 - Operationally Aware Version
+Version: 8.0 - Operationally Aware & Corrected
+
+CRITICAL FIXES in v8.0:
+- Fixed looping bug causing repeated segments on the same day.
+- Added 'transaction_date' to LoanSegment to clarify when the real-world activity occurs.
+- Refactored segment creation logic for clarity and accuracy.
 
 CRITICAL BANKING REALITIES:
-- Bank switching/renewals only happen on business days.
+- Bank switching/renewals (transactions) only happen on business days.
+- A loan's 'start_date' can be a non-business day if transacted on the prior business day.
 - Interest accrues every day, including weekends and holidays.
-- Month-end crossing incurs penalty rates.
-- CITI Call is a tactical tool for bridging non-business days or month-ends.
-- Term products (e.g., 1-week) have a maximum duration and must be renewed on a business day.
+- CITI Call is a tactical tool for bridging non-business days or avoiding month-end penalties.
 """
 
 try:
@@ -20,36 +24,31 @@ except ImportError as e:
     raise
 
 class LoanSegment:
-    """Represents a single loan segment with banking operational reality."""
+    """Represents a single loan segment with full banking operational reality."""
     
-    def __init__(self, bank: str, bank_class: str, rate: float, days: int, 
-                 start_date: datetime, end_date: datetime, interest: float, crosses_month: bool):
-        if days <= 0:
-            raise ValueError(f"Invalid days: {days}. Must be positive.")
-        if rate < 0:
-            raise ValueError(f"Invalid rate: {rate}. Must be non-negative.")
-        if start_date > end_date:
-            raise ValueError(f"Invalid dates: start {start_date} > end {end_date}")
+    def __init__(self, bank: str, rate: float, days: int, 
+                 start_date: datetime, end_date: datetime, 
+                 transaction_date: datetime, interest: float, crosses_month: bool):
+        # Validation for core properties
+        if days <= 0: raise ValueError(f"Days must be positive. Got {days}.")
+        if rate < 0: raise ValueError(f"Rate must be non-negative. Got {rate}.")
+        if start_date > end_date: raise ValueError(f"Start date cannot be after end date.")
         
         self.bank = bank
-        self.bank_class = bank_class
         self.rate = float(rate)
         self.days = int(days)
         self.start_date = start_date
         self.end_date = end_date
+        self.transaction_date = transaction_date # The business day the transaction was made.
         self.interest = float(interest)
         self.crosses_month = bool(crosses_month)
-        self.operational_feasible = True
-        self.banking_logic = ""
-        self.compliance_status = "UNKNOWN"
 
 class LoanStrategy:
     """Represents a complete loan strategy with real banking validation."""
     
-    def __init__(self, name: str, segments: List[LoanSegment], is_optimized: bool = False):
+    def __init__(self, name: str, segments: List[LoanSegment]):
         self.name = name
         self.segments = segments or []
-        self.is_optimized = is_optimized
         self._calculate_metrics()
         self._validate_banking_operations()
     
@@ -84,7 +83,7 @@ class LoanStrategy:
 
     def _validate_banking_operations(self):
         """Validate real banking operational feasibility and compliance."""
-        self.operational_feasible = True
+        self.operational_feasible = all(seg.transaction_date.weekday() < 5 for seg in self.segments)
         self.banking_compliant = True
         
         if not self.segments or not self.is_valid:
@@ -92,22 +91,12 @@ class LoanStrategy:
             self.banking_compliant = False
             return
         
-        # CITI Call is an emergency/tactical tool, excessive use is a red flag.
-        if self.citi_days > 7:
+        if self.citi_days > 10: # Increased threshold slightly
             self.operational_feasible = False
-        
-        # A compliant strategy should not use standard rates to cross the month-end penalty period.
-        for seg in self.segments:
-            if seg.crosses_month and "CITI" not in seg.bank and "Penalty" not in seg.bank:
-                 # Allowing standard rates to cross month-end is a compliance issue.
-                 if seg.rate < 8.0: # Assuming rates below 8% are non-penalty rates
-                    self.banking_compliant = False
-                    break
 
 class RealBankingCalculator:
     """
-    Real Banking Calculator with operational constraints.
-    This version understands that loan renewals must happen on business days.
+    Real Banking Calculator with corrected operational constraints and clear transaction dating.
     """
     
     def __init__(self):
@@ -130,10 +119,8 @@ class RealBankingCalculator:
         return date.strftime('%Y-%m-%d') in self.holidays_2025
     
     def is_business_day(self, date: datetime) -> bool:
-        if date.weekday() >= 5:  # 5: Saturday, 6: Sunday
-            return False
-        if self.is_holiday(date):
-            return False
+        if date.weekday() >= 5: return False
+        if self.is_holiday(date): return False
         return True
     
     def get_last_business_day_before(self, target_date: datetime) -> datetime:
@@ -155,158 +142,128 @@ class RealBankingCalculator:
 
     def _create_operationally_aware_segments(
         self, start_date: datetime, total_days: int, month_end: datetime,
-        segment_max_days: int, bank_name: str, bank_class: str,
-        standard_rate: float, cross_month_rate: float, citi_call_rate: float,
-        principal: float
+        segment_max_days: int, bank_name: str, standard_rate: float,
+        citi_call_rate: float, principal: float
     ) -> List[LoanSegment]:
         """
-        Creates loan segments respecting banking operational realities.
-        - Term products are only initiated on business days.
-        - Weekends/holidays are bridged using a tactical product (CITI Call).
-        - Month-end penalties are applied correctly.
+        [Corrected Logic] Creates loan segments respecting banking operational realities.
         """
         segments = []
         current_date = start_date
         remaining_days = total_days
 
+        # Main loop to create segments until the loan is fully covered.
         while remaining_days > 0:
-            # 1. Handle non-business day starts (or weekend bridges)
+            transaction_date = self.get_last_business_day_before(current_date + timedelta(days=1))
+            
+            # --- डिसीजन 1: Is today a business day? ---
             if not self.is_business_day(current_date):
-                self.log_message(f"[BRIDGE] Current date {current_date.strftime('%A')} is not a business day. Bridging with CITI.", "INFO")
-                next_biz_day = self.get_first_business_day_after(current_date - timedelta(days=1))
+                # ACTION: Bridge with CITI until the next business day.
+                self.log_message(f"Day {total_days-remaining_days+1}: Start is non-business. Bridging with CITI.", "TACTIC")
+                next_biz_day = self.get_first_business_day_after(current_date)
                 bridge_days = min(remaining_days, (next_biz_day - current_date).days)
                 
-                if bridge_days > 0:
-                    end_bridge_date = current_date + timedelta(days=bridge_days - 1)
-                    interest = self.calculate_interest(principal, citi_call_rate, bridge_days)
-                    segments.append(LoanSegment(
-                        "CITI Call (Bridge)", "citi-tactical", citi_call_rate, bridge_days,
-                        current_date, end_bridge_date, interest, False
-                    ))
-                    current_date = next_biz_day
-                    remaining_days -= bridge_days
-                if remaining_days <= 0: break
+                seg_end_date = current_date + timedelta(days=bridge_days - 1)
+                interest = self.calculate_interest(principal, citi_call_rate, bridge_days)
+                
+                segments.append(LoanSegment(
+                    "CITI Call (Bridge)", citi_call_rate, bridge_days, current_date, seg_end_date,
+                    transaction_date, interest, False
+                ))
+                current_date = next_biz_day
+                remaining_days -= bridge_days
+                continue
 
-            # 2. Handle the main term segment on a business day
-            last_day_of_loan = start_date + timedelta(days=total_days - 1)
-            
-            # Determine the end of this segment, considering month-end, term limits, and loan end.
-            # The segment must end BEFORE the month-end penalty day.
-            last_switch_day = self.get_last_business_day_before(month_end)
-            
-            days_to_monthend_switch = (last_switch_day - current_date).days + 1
-            
-            segment_days = min(remaining_days, segment_max_days, days_to_monthend_switch)
-            
-            # Check if this segment will cross the month-end date
-            end_segment_date = current_date + timedelta(days=segment_days - 1)
-            crosses_month = current_date <= month_end and end_segment_date >= month_end
+            # --- डिसीजन 2: Is a month-end crossing imminent? ---
+            last_biz_day_before_me = self.get_last_business_day_before(month_end + timedelta(days=1))
 
-            rate = cross_month_rate if crosses_month else standard_rate
-            bank = f"{bank_name} (Penalty)" if crosses_month else bank_name
+            if current_date > last_biz_day_before_me and current_date <= month_end:
+                 # ACTION: We are in the month-end danger zone. Use CITI.
+                self.log_message(f"Day {total_days-remaining_days+1}: In month-end zone. Using CITI.", "TACTIC")
+                next_biz_day = self.get_first_business_day_after(month_end)
+                me_days = min(remaining_days, (next_biz_day - current_date).days)
+                
+                seg_end_date = current_date + timedelta(days=me_days - 1)
+                interest = self.calculate_interest(principal, citi_call_rate, me_days)
 
-            if crosses_month:
-                self.log_message(f"[PENALTY] Segment from {current_date.date()} to {end_segment_date.date()} crosses month-end. Applying penalty rate.", "WARN")
-                # If crossing month-end, the segment should cover the period until the next business day.
-                # This logic is simplified to use the tactical CITI bridge instead.
-                # We will create a segment until the last business day.
-                segment_days = (last_switch_day - current_date).days + 1
-                end_segment_date = last_switch_day
-                rate = standard_rate # Rate before month-end is standard
-                bank = bank_name
+                segments.append(LoanSegment(
+                    "CITI Call (Month-End)", citi_call_rate, me_days, current_date, seg_end_date,
+                    transaction_date, interest, True
+                ))
+                current_date = next_biz_day
+                remaining_days -= me_days
+                continue
+
+            # --- डिसीजन 3: Standard operation on a business day ---
+            # ACTION: Use the cheaper standard product for as long as possible.
+            days_to_me_switch = (last_biz_day_before_me - current_date).days + 1
             
-            if segment_days <= 0 and remaining_days > 0:
-                 # This can happen if current_date is already the last_switch_day or after.
-                 # We must switch to a tactical tool for the month-end crossing.
-                 days_over_weekend = (self.get_first_business_day_after(month_end) - month_end).days
-                 citi_days = min(remaining_days, days_over_weekend)
-                 end_citi_date = month_end + timedelta(days=citi_days -1)
-                 interest = self.calculate_interest(principal, citi_call_rate, citi_days)
-                 segments.append(LoanSegment(
-                     "CITI Call (Month-End)", "citi-tactical", citi_call_rate, citi_days,
-                     month_end, end_citi_date, interest, True
-                 ))
-                 current_date = end_citi_date + timedelta(days=1)
-                 remaining_days -= citi_days
-                 continue
+            # Can't use standard product past the last safe business day before month-end.
+            possible_days = min(remaining_days, segment_max_days, days_to_me_switch)
+            
+            seg_end_date = current_date + timedelta(days=possible_days - 1)
+            interest = self.calculate_interest(principal, standard_rate, possible_days)
 
-
-            interest = self.calculate_interest(principal, rate, segment_days)
             segments.append(LoanSegment(
-                bank, bank_class, rate, segment_days,
-                current_date, end_segment_date, interest, crosses_month
+                bank_name, standard_rate, possible_days, current_date, seg_end_date,
+                transaction_date, interest, False
             ))
-            
-            current_date = end_segment_date + timedelta(days=1)
-            remaining_days -= segment_days
+
+            current_date = seg_end_date + timedelta(days=1)
+            remaining_days -= possible_days
 
         return segments
+
 
     def calculate_optimal_strategy(self, principal: float, total_days: int, start_date: datetime,
                                  month_end: datetime, bank_rates: Dict[str, float],
                                  include_banks: Dict[str, bool] = None) -> Tuple[List[LoanStrategy], LoanStrategy]:
-        """Calculates and compares different loan strategies using the operationally-aware segment generator."""
+        """Calculates and compares loan strategies using the corrected, operationally-aware logic."""
         
         self.calculation_log = []
-        if principal <= 0 or total_days <= 0:
-            self.log_message("Principal and Total Days must be positive.", "ERROR")
-            return [], None
+        if principal <= 0 or total_days <= 0: return [], None
 
-        if include_banks is None:
-            include_banks = {'CIMB': True, 'Permata': False}
+        if include_banks is None: include_banks = {'CIMB': True}
         
-        self.log_message(f"🏦 Real Banking Calculator v7.0 Initializing...", "INFO")
-        self.log_message(f"Inputs: Principal={principal:,.0f} IDR, Days={total_days}, Start={start_date.strftime('%Y-%m-%d')}", "INFO")
+        self.log_message(f"🏦 Real Banking Calculator v8.0 Initializing...", "INFO")
+        self.log_message(f"Inputs: P={principal:,.0f}, Days={total_days}, Start={start_date.date()}", "INFO")
 
         strategies = []
         
-        # --- Define available strategies ---
-        strategy_definitions = {
-            "SCBT 1w Real Banking": {
-                "max_days": 7, "bank_name": "SCBT 1w", "bank_class": "scbt", 
-                "rate": bank_rates.get('scbt_1w', 6.20), "enabled": True
-            },
-            "SCBT 2w Real Banking": {
-                "max_days": 14, "bank_name": "SCBT 2w", "bank_class": "scbt",
-                "rate": bank_rates.get('scbt_2w', 6.60), "enabled": True
-            },
-            "CIMB Real Banking": {
-                "max_days": 30, "bank_name": "CIMB 1M", "bank_class": "cimb",
-                "rate": bank_rates.get('cimb', 7.00), "enabled": include_banks.get('CIMB', False)
-            }
-        }
-        
-        # --- CITI 3-month Baseline Strategy ---
+        # --- CITI 3-month Baseline (for comparison) ---
         loan_end_date = start_date + timedelta(days=total_days - 1)
         citi_crosses = start_date <= month_end and loan_end_date > month_end
         citi_rate = bank_rates.get('general_cross_month') if citi_crosses else bank_rates.get('citi_3m')
         citi_interest = self.calculate_interest(principal, citi_rate, total_days)
-        citi_segment = LoanSegment('CITI 3M', 'citi-baseline', citi_rate, total_days, start_date, loan_end_date, citi_interest, citi_crosses)
+        citi_segment = LoanSegment('CITI 3-month Baseline', citi_rate, total_days, start_date, loan_end_date, start_date, citi_interest, citi_crosses)
         strategies.append(LoanStrategy('CITI 3-month Baseline', [citi_segment]))
+
+        # --- Define other available strategies ---
+        strategy_definitions = {
+            "SCBT 1w Real Banking": {"max_days": 7, "bank": "SCBT 1w", "rate": bank_rates.get('scbt_1w'), "enabled": True},
+            "SCBT 2w Real Banking": {"max_days": 14, "bank": "SCBT 2w", "rate": bank_rates.get('scbt_2w'), "enabled": True},
+            "CIMB Real Banking": {"max_days": 30, "bank": "CIMB 1M", "rate": bank_rates.get('cimb'), "enabled": include_banks.get('CIMB')}
+        }
 
         # --- Generate Operationally-Aware Strategies ---
         for name, params in strategy_definitions.items():
             if params["enabled"]:
-                self.log_message(f"Calculating strategy: {name}", "INFO")
                 segments = self._create_operationally_aware_segments(
                     start_date=start_date, total_days=total_days, month_end=month_end,
-                    segment_max_days=params["max_days"], bank_name=params["bank_name"], bank_class=params["bank_class"],
-                    standard_rate=params["rate"],
-                    cross_month_rate=bank_rates.get('general_cross_month', 9.20),
-                    citi_call_rate=bank_rates.get('citi_call', 7.75),
+                    segment_max_days=params["max_days"], bank_name=params["bank"],
+                    standard_rate=params["rate"], citi_call_rate=bank_rates.get('citi_call'),
                     principal=principal
                 )
                 if segments:
-                    strategies.append(LoanStrategy(name, segments, is_optimized=True))
+                    strategies.append(LoanStrategy(name, segments))
 
         # --- Determine the best strategy ---
         valid_strategies = [s for s in strategies if s.is_valid and s.total_interest != float('inf')]
-        if not valid_strategies:
-            return strategies, None
+        if not valid_strategies: return strategies, None
             
         valid_strategies.sort(key=lambda x: x.total_interest)
         best_strategy = valid_strategies[0]
         
-        self.log_message(f"🏆 OPTIMAL STRATEGY: {best_strategy.name} | Cost: {best_strategy.total_interest:,.0f} IDR", "INFO")
+        self.log_message(f"🏆 OPTIMAL: {best_strategy.name} | Cost: {best_strategy.total_interest:,.0f} IDR", "SUCCESS")
         
         return strategies, best_strategy
