@@ -1,12 +1,12 @@
-"""
+""
 Bank Loan Optimization Calculator - Real Banking Operations
 Author: Real Banking Operations Expert
-Version: 9.0 - Robust Segmenting & Bug Fix
+Version: 10.0 - Final, Stable Version
 
-CRITICAL FIXES in v9.0:
-- Fixed the 'ValueError: Days must be positive. Got 0' bug by rewriting the segment calculation logic.
-- The new logic is cleaner and handles edge cases around month-end and weekends more reliably.
-- Kept the 'transaction_date' feature for clarity.
+CRITICAL FIXES in v10.0:
+- RESTORED the 'is_holiday' method. This fixes the AttributeError crash in the Streamlit UI.
+- The calendar display will now work correctly, explaining why certain tactical decisions are made.
+- Kept all previous bug fixes for robust calculations.
 
 CRITICAL BANKING REALITIES:
 - Bank transactions only happen on business days.
@@ -70,6 +70,7 @@ class RealBankingCalculator:
     """
     
     def __init__(self):
+        # Indonesian Public Holidays for 2025
         self.holidays_2025 = {
             '2025-01-01', '2025-01-29', '2025-03-14', '2025-03-29', '2025-03-31',
             '2025-04-09', '2025-05-01', '2025-05-12', '2025-05-29', '2025-06-01',
@@ -81,8 +82,18 @@ class RealBankingCalculator:
     def log_message(self, message: str, msg_type: str = "INFO"):
         self.calculation_log.append(f"[{msg_type.upper()}] {message}")
     
+    def is_holiday(self, date: datetime) -> bool:
+        """
+        [RESTORED] Checks if a given date is a public holiday.
+        This method is required by the Streamlit UI for the calendar display.
+        """
+        return date.strftime('%Y-%m-%d') in self.holidays_2025
+
     def is_business_day(self, date: datetime) -> bool:
-        return date.weekday() < 5 and date.strftime('%Y-%m-%d') not in self.holidays_2025
+        """Checks if a date is a business day (not a weekend or holiday)."""
+        if date.weekday() >= 5: return False
+        if self.is_holiday(date): return False
+        return True
     
     def get_last_business_day_before(self, target_date: datetime) -> datetime:
         check_date = target_date - timedelta(days=1)
@@ -111,13 +122,10 @@ class RealBankingCalculator:
             transaction_date = self.get_last_business_day_before(current_date + timedelta(days=1))
             last_biz_day_before_me = self.get_last_business_day_before(month_end + timedelta(days=1))
 
-            # --- Decision 1: Is today a non-business day? ---
             if not self.is_business_day(current_date):
-                # ACTION: Bridge with CITI until the next business day.
                 next_biz_day = self.get_first_business_day_after(current_date - timedelta(days=1))
                 days_to_bridge = min(remaining_days, (next_biz_day - current_date).days)
-                
-                if days_to_bridge <= 0: break # Safety break to prevent infinite loops / error
+                if days_to_bridge <= 0: break 
                 
                 end_date = current_date + timedelta(days=days_to_bridge - 1)
                 interest = self.calculate_interest(principal, citi_call_rate, days_to_bridge)
@@ -127,13 +135,10 @@ class RealBankingCalculator:
                 remaining_days -= days_to_bridge
                 continue
 
-            # --- Decision 2: Are we in the month-end danger zone? ---
             if current_date >= last_biz_day_before_me:
-                # ACTION: Use CITI to navigate the month-end period safely.
                 next_biz_day_after_me = self.get_first_business_day_after(month_end)
                 days_in_danger = min(remaining_days, (next_biz_day_after_me - current_date).days)
-
-                if days_in_danger <= 0: break # Safety break
+                if days_in_danger <= 0: break
 
                 end_date = current_date + timedelta(days=days_in_danger - 1)
                 interest = self.calculate_interest(principal, citi_call_rate, days_in_danger)
@@ -143,12 +148,9 @@ class RealBankingCalculator:
                 remaining_days -= days_in_danger
                 continue
             
-            # --- Decision 3: Standard operation on a safe business day ---
-            # ACTION: Use the cheaper standard product.
             days_until_danger = (last_biz_day_before_me - current_date).days
             days_to_use = min(remaining_days, segment_max_days, days_until_danger)
-            
-            if days_to_use <= 0: break # This was the source of the bug. This guard prevents it.
+            if days_to_use <= 0: break
 
             end_date = current_date + timedelta(days=days_to_use - 1)
             interest = self.calculate_interest(principal, standard_rate, days_to_use)
