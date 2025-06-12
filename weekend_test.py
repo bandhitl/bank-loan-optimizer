@@ -87,6 +87,19 @@ def test_no_repeated_days_bug():
     assert not bug_found, "The bug with repeated days still exists!"
 
 
+def test_is_holidays_alias():
+    """Ensure the old `is_holidays` alias matches `is_holiday`."""
+    calc = RealBankingCalculator()
+
+    # Known holiday
+    holiday_date = datetime(2025, 1, 1)
+    assert calc.is_holidays(holiday_date) == calc.is_holiday(holiday_date)
+
+    # A regular business day
+    normal_date = datetime(2025, 1, 2)
+    assert calc.is_holidays(normal_date) == calc.is_holiday(normal_date)
+
+
 if __name__ == "__main__":
     test_transaction_date_logic()
     test_no_repeated_days_bug()
