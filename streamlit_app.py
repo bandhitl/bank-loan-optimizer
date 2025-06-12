@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 try:
+    # This uses the correct logic from loan_calculator_v9
     from loan_calculator import RealBankingCalculator
 except ImportError:
     st.error("❌ loan_calculator.py not found or has import errors. Please ensure you have the latest version.")
@@ -44,14 +45,14 @@ def safe_detect_month_ends(start_date, end_date):
 def main():
     st.markdown('<h1 class="main-header">🏦 Real Banking Loan Optimizer</h1>', unsafe_allow_html=True)
     
-    st.markdown('<div class="info-box"><strong>Real Banking Operations:</strong> This system now includes a "Transaction Day" to clarify when banking activities occur, especially for loans starting on non-business days.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="info-box"><strong>Real Banking Operations:</strong> This version restores the full Banking Calendar to clarify why certain decisions (like starting with CITI Call on a holiday) are made.</div>', unsafe_allow_html=True)
     
     # --- Sidebar for User Inputs ---
     with st.sidebar:
         st.header("📋 Loan Parameters")
         principal = st.number_input("Principal Amount (IDR)", min_value=1_000_000, value=38_000_000_000, step=1_000_000, format="%d")
         total_days = st.number_input("Loan Period (days)", min_value=1, max_value=90, value=30, step=1)
-        start_date = st.date_input("Start Date", value=datetime(2025, 5, 25))
+        start_date = st.date_input("Start Date", value=datetime(2025, 6, 6)) # Default to the holiday example
         
         if start_date and total_days > 0:
             start_dt = datetime.combine(start_date, datetime.min.time())
@@ -78,7 +79,6 @@ def main():
                 start_dt = datetime.combine(start_date, datetime.min.time())
                 end_dt = start_dt + timedelta(days=total_days - 1)
                 month_ends = safe_detect_month_ends(start_dt, end_dt)
-                # The calculator logic handles multiple month-ends, but we use the first for display.
                 month_end_dt = month_ends[0] if month_ends else datetime(2099, 12, 31)
 
                 bank_rates = {
@@ -112,8 +112,8 @@ def main():
             col3.metric("Total Savings", format_currency(savings))
             st.markdown('</div>', unsafe_allow_html=True)
 
-            # --- Tabs for Detailed Views ---
-            tab1, tab2 = st.tabs(["📋 Banking Operations Schedule", "📝 Calculation Logs"])
+            # --- Tabs for Detailed Views (CALENDAR TAB IS BACK) ---
+            tab1, tab2, tab3 = st.tabs(["📋 Banking Operations Schedule", "📅 Banking Calendar", "📝 Calculation Logs"])
 
             with tab1:
                 st.subheader("Schedule with Transaction Day")
@@ -126,16 +126,41 @@ def main():
                         'Transaction Day': seg.transaction_date.strftime('%Y-%m-%d (%a)'),
                         'Start Day': seg.start_date.strftime('%Y-%m-%d (%a)'),
                         'End Day': seg.end_date.strftime('%Y-%m-%d (%a)'),
-                        'Days': seg.days,
-                        'Bank': seg.bank,
-                        'Rate (%)': seg.rate,
+                        'Days': seg.days, 'Bank': seg.bank, 'Rate (%)': seg.rate,
                         'Interest (IDR)': format_currency(seg.interest)
                     })
                 
-                schedule_df = pd.DataFrame(schedule_data)
-                st.dataframe(schedule_df, use_container_width=True)
+                st.dataframe(pd.DataFrame(schedule_data), use_container_width=True)
 
-            with tab2:
+            with tab2: # <<< THIS IS THE RESTORED CALENDAR
+                st.subheader("Banking Calendar & Operational Constraints")
+                st.write("This calendar shows which days are weekends or holidays, explaining why tactical loans like CITI Call are sometimes used.")
+                
+                calendar_data = []
+                for d in range(total_days):
+                    current_day = start_dt + timedelta(days=d)
+                    day_type = "Business Day"
+                    if not calculator.is_business_day(current_day):
+                        day_type = "Holiday" if calculator.is_holiday(current_day) else "Weekend"
+                    
+                    calendar_data.append({
+                        'Date': current_day.strftime('%Y-%m-%d'),
+                        'Day': current_day.strftime('%A'),
+                        'Type': day_type,
+                        'Banking Operations': "✅ Open" if calculator.is_business_day(current_day) else "❌ Closed"
+                    })
+                
+                calendar_df = pd.DataFrame(calendar_data)
+                
+                def highlight_non_business(row):
+                    if row.Type != 'Business Day':
+                        return ['background-color: #fff3cd'] * len(row)
+                    return [''] * len(row)
+
+                st.dataframe(calendar_df.style.apply(highlight_non_business, axis=1), use_container_width=True)
+
+
+            with tab3:
                 st.subheader("Real Banking Calculation Logs")
                 if calculator.calculation_log:
                     st.code("\n".join(calculator.calculation_log), language='text')
