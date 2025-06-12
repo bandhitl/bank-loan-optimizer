@@ -1,4 +1,4 @@
-""
+"""
 Bank Loan Optimization Calculator - Real Banking Operations
 Author: Real Banking Operations Expert
 Version: 10.0 - Final, Stable Version
@@ -11,7 +11,7 @@ CRITICAL FIXES in v10.0:
 CRITICAL BANKING REALITIES:
 - Bank transactions only happen on business days.
 - A loan's 'start_date' can be a non-business day if transacted on the prior business day.
-- CITI Call is a tactical tool for bridging non-business days or avoiding month-end penalties.
+    - CITI Call is a tactical tool for bridging non-business days or avoiding month-end penalties.
 """
 
 try:
@@ -88,6 +88,10 @@ class RealBankingCalculator:
         This method is required by the Streamlit UI for the calendar display.
         """
         return date.strftime('%Y-%m-%d') in self.holidays_2025
+
+    # Backwards compatibility: some modules called `is_holidays`
+    def is_holidays(self, date: datetime) -> bool:  # pragma: no cover - alias
+        return self.is_holiday(date)
 
     def is_business_day(self, date: datetime) -> bool:
         """Checks if a date is a business day (not a weekend or holiday)."""
@@ -174,10 +178,33 @@ class RealBankingCalculator:
         
         # --- Baseline Strategy (for comparison) ---
         loan_end_date = start_date + timedelta(days=total_days - 1)
-        citi_crosses = any(d.month != start_date.month for d in [start_date + timedelta(x) for x in range(total_days)])
-        citi_rate = bank_rates.get('general_cross_month') if citi_crosses else bank_rates.get('citi_3m')
+        citi_crosses = any(
+            (start_date + timedelta(x)).month != start_date.month
+            for x in range(total_days)
+        )
+        citi_rate = (
+            bank_rates.get('general_cross_month', bank_rates.get('citi_call'))
+            if citi_crosses
+            else bank_rates.get('citi_3m', bank_rates.get('citi_call'))
+        )
         citi_interest = self.calculate_interest(principal, citi_rate, total_days)
-        strategies.append(LoanStrategy('CITI 3-month Baseline', [LoanSegment('CITI 3M Baseline', citi_rate, total_days, start_date, loan_end_date, start_date, citi_interest, citi_crosses)]))
+        strategies.append(
+            LoanStrategy(
+                'CITI 3-month Baseline',
+                [
+                    LoanSegment(
+                        'CITI 3M Baseline',
+                        citi_rate,
+                        total_days,
+                        start_date,
+                        loan_end_date,
+                        start_date,
+                        citi_interest,
+                        citi_crosses,
+                    )
+                ],
+            )
+        )
 
         # --- Define other strategies ---
         strategy_definitions = {
@@ -188,14 +215,19 @@ class RealBankingCalculator:
 
         # --- Generate and add strategies ---
         for name, params in strategy_definitions.items():
-            if params.get("enabled"):
+            if params.get("enabled") and params.get("rate") is not None:
                 segments = self._create_operationally_aware_segments(
-                    start_date=start_date, total_days=total_days, month_end=month_end,
-                    segment_max_days=params["max_days"], bank_name=params["bank"],
-                    standard_rate=params["rate"], citi_call_rate=bank_rates.get('citi_call'),
-                    principal=principal
+                    start_date=start_date,
+                    total_days=total_days,
+                    month_end=month_end,
+                    segment_max_days=params["max_days"],
+                    bank_name=params["bank"],
+                    standard_rate=params["rate"],
+                    citi_call_rate=bank_rates.get('citi_call'),
+                    principal=principal,
                 )
-                if segments: strategies.append(LoanStrategy(name, segments))
+                if segments:
+                    strategies.append(LoanStrategy(name, segments))
 
         valid_strategies = sorted([s for s in strategies if s.is_valid], key=lambda x: x.total_interest)
         best_strategy = valid_strategies[0] if valid_strategies else None

@@ -3,7 +3,7 @@
 Real Banking Test Script - Validates corrected loan calculator (Version 8.0+)
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from loan_calculator import RealBankingCalculator
 
 def test_transaction_date_logic():
