@@ -52,6 +52,26 @@ def test_real_banking_calendar():
     print(f"First business day after: {first_biz_after.strftime('%A, %Y-%m-%d')}")
     print(f"Banking gap: {(first_biz_after - last_biz_before).days - 1} non-business days")
 
+def test_scbt_1w_business_end_dates():
+    """Ensure SCBT 1-week segments end on business days"""
+    print("\n🔍 TEST SCBT 1W BUSINESS DAY END DATES")
+    calc = RealBankingCalculator()
+    segments = calc.create_real_banking_segments(
+        start_date=datetime(2025, 5, 25),
+        total_days=14,
+        month_end=datetime(2025, 5, 31),
+        segment_size=7,
+        bank_name='SCBT 1w',
+        bank_class='scbt',
+        standard_rate=6.20,
+        cross_month_rate=9.20,
+        principal=10_000_000,
+        strategy_name='Test'
+    )
+    for seg in segments:
+        print(f"Segment {seg.start_date.strftime('%Y-%m-%d')} → {seg.end_date.strftime('%Y-%m-%d')} | End business day: {calc.is_business_day(seg.end_date)}")
+        assert calc.is_business_day(seg.end_date), "Segment ends on a non-business day"
+
 def test_real_banking_loan_calculation():
     """Test real banking loan calculation with operational constraints"""
     print("\n\n🏦 TESTING REAL BANKING LOAN CALCULATION")
@@ -234,6 +254,7 @@ def test_operational_constraints():
 
 if __name__ == "__main__":
     test_real_banking_calendar()
+    test_scbt_1w_business_end_dates()
     test_real_banking_loan_calculation()
     test_banking_expert_integration()
     test_operational_constraints()
