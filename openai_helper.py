@@ -705,16 +705,20 @@ def apply_enhanced_banking_corrections(original_segments, principal: float, mont
     # Convert corrected data back to LoanSegment objects
     try:
         from loan_calculator import LoanSegment
-        
+
         corrected_segments = []
         for seg_data in corrected_data:
+            start_date = datetime.strptime(seg_data["start_date"], '%Y-%m-%d')
+            # Calculate transaction_date as last business day before start_date + 1
+            transaction_date = expert.get_last_business_day_before(start_date + timedelta(days=1))
+
             corrected_segments.append(LoanSegment(
                 bank=seg_data["bank"],
-                bank_class="real_banking_expert",
                 rate=seg_data["rate"],
                 days=seg_data["days"],
-                start_date=datetime.strptime(seg_data["start_date"], '%Y-%m-%d'),
+                start_date=start_date,
                 end_date=datetime.strptime(seg_data["end_date"], '%Y-%m-%d'),
+                transaction_date=transaction_date,
                 interest=seg_data["interest"],
                 crosses_month=seg_data.get("crosses_month", False)
             ))
